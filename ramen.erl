@@ -6,6 +6,10 @@
 % Add chatrooms, make sure user only gets messages from rooms they are in.
 % Add message user.
 
+% For string parsing:
+% lists:prefix("LOGIN ",A).
+% lists:subtract("LOGIN ", A).
+
 -module(ramen).
 -author('Caz').
 
@@ -29,6 +33,8 @@ accept(LSocket) ->
 	addPID(spawn(ramen, sendloop, [Socket])),
 	accept(LSocket).
 
+%merge recv loop with sendloop, so they share pid
+% or make a parent process, that way we can still do a timeout on the recv loop
 recvLoop(Socket) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
@@ -62,18 +68,19 @@ addPID(P) ->
 bcast(M, []) -> 
 	io:format("Sent: ~s~n", [M]);
 bcast(M, State) ->
-	[P | Rest] = State,
+	[{P,_} | Rest] = State,
 	io:format("Sending to ~w~n", [P]),
 	P ! {send, M},
 	bcast(M, Rest).
 
 cull(P, State) ->
-	lists:delete(P, State).
+	R = {P,anon},
+	lists:delete(R, State).
 
 keepstate(State) ->
 	receive
 		{add, P} ->
-			NewState = [P | State],
+			NewState = [{P, anon} | State],
 			io:format("State: ~w~n", [NewState]),
 			keepstate(NewState);
 		{remove, P} ->
@@ -87,4 +94,3 @@ keepstate(State) ->
 		quit ->
 			ok
 	end.
-
