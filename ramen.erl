@@ -2,7 +2,6 @@
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post.
 % Add timeout and char length check to received msgs
 % Add /login, associate user name with PID (Check if name exists), prevent unlogged users from seeing chat.
-% usernames can't start with # !!!
 % Add username and timestamp to posts.
 % Add chatrooms, make sure user only gets messages from rooms they are in.
 % Add message user.
@@ -32,21 +31,19 @@ accept(LSocket) ->
 			accept(LSocket)
 	end.
 
-%merge recv loop with sendloop, so they share pid
-% or make a parent process, that way we can still do a timeout on the recv loop
-
 addCon(Socket) ->
 	PID = spawn(ramen, sendloop, [Socket]),
 	spawn(fun() -> recvLoop(Socket, PID) end),
 	st ! {add, PID}.
 
-recvLoop(Socket, P) ->
+% Need to add something here to check frequency of posts and kill user if over limit
+recvloop(Socket, P) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
 			handle ! {P, Data},
 			%st ! {broadcast, Data},
 			io:format("Message from ~w: ~s~n", [P, Data]),
-			recvLoop(Socket, P);
+			recvloop(Socket, P);
 		{error, closed} ->
 			ok
 	end.
@@ -74,9 +71,13 @@ bcast(M, State) ->
 	P ! {send, M},
 	bcast(M, Rest).
 
+% this will need fixing to work with users once logged in
 cull(P, State) ->
 	R = {P,anon},
 	lists:delete(R, State).
+
+addUser(P, User, State) ->
+	State.
 
 keepstate(State) ->
 	receive
@@ -84,6 +85,9 @@ keepstate(State) ->
 			NewState = [{P, anon} | State],
 			io:format("State: ~w~n", [NewState]),
 			keepstate(NewState);
+		{login, P, User} ->
+			NewState = addUser(P, User, State),
+			keepState(NewState);
 		{remove, P} ->
 			NewState = cull(P, State),
 			io:format("Culled: ~w~n", [P]),
@@ -101,6 +105,7 @@ reqhandler() ->
 		{P, M} ->
 			case sanity:checkInput(M) of
 				{ok, login, User} ->
+					st ! {login, P, User},
 					reqhandler();
 				{ok, message, room, Room, Txt} ->
 					st ! {broadcast, Txt},
