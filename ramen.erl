@@ -7,19 +7,16 @@
 % Add chatrooms, make sure user only gets messages from rooms they are in.
 % Add message user.
 
-% For string parsing:
-% lists:prefix("LOGIN ",A).
-% lists:subtract("LOGIN ", A).
-
 -module(ramen).
 -author('Caz').
 
--export([start/1, keepstate/1, sendloop/1]).
+-export([start/1, keepstate/1, sendloop/1, reqhandler/0]).
 
--define(TCP_OPTIONS, [binary, {packet, 0}, {active, false}, {reuseaddr, true}]).
+-define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
 start(Port) ->
 	register(st, spawn(ramen, keepstate, [[]])),
+	register(handle, spawn(ramen, reqhandler, [])),
 	listen(Port).
 
 listen(Port) ->
@@ -27,22 +24,29 @@ listen(Port) ->
 	accept(LSocket).
 
 accept(LSocket) ->
-	{ok, Socket} = gen_tcp:accept(LSocket),
-	spawn(fun() -> 
-		recvLoop(Socket) 
-	end),
-	addPID(spawn(ramen, sendloop, [Socket])),
-	accept(LSocket).
+	case gen_tcp:accept(LSocket) of
+		{ok, Socket} ->
+			addCon(Socket),
+			accept(LSocket);
+		{error, Reason} ->
+			accept(LSocket)
+	end.
 
 %merge recv loop with sendloop, so they share pid
 % or make a parent process, that way we can still do a timeout on the recv loop
-recvLoop(Socket) ->
+
+addCon(Socket) ->
+	PID = spawn(ramen, sendloop, [Socket]),
+	spawn(fun() -> recvLoop(Socket, PID) end),
+	st ! {add, PID}.
+
+recvLoop(Socket, P) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
-			st ! {broadcast, Data},
-			io:format("Message: ~s~n", [Data]),
-			%timer:sleep(100),
-			recvLoop(Socket);
+			handle ! {P, Data},
+			%st ! {broadcast, Data},
+			io:format("Message from ~w: ~s~n", [P, Data]),
+			recvLoop(Socket, P);
 		{error, closed} ->
 			ok
 	end.
@@ -61,10 +65,6 @@ sendloop(Socket) ->
 					ok
 			end
 	end.
-
-addPID(P) ->
-	io:format("Pid ~w~n", [P]),
-	st ! {add, P}.
 
 bcast(M, []) -> 
 	io:format("Sent: ~s~n", [M]);
@@ -94,4 +94,22 @@ keepstate(State) ->
 			keepstate(State);
 		quit ->
 			ok
+	end.
+
+reqhandler() ->
+	receive
+		{P, M} ->
+			case sanity:checkInput(M) of
+				{ok, login, User} ->
+					reqhandler();
+				{ok, message, room, Room, Txt} ->
+					st ! {broadcast, Txt},
+					reqhandler();
+				{ok, message, user, User, Txt} ->
+					st ! {broadcast, Txt},
+					reqhandler();
+				{error, Reason} ->
+					% Spit error Message back to user
+					reqhandler()
+			end
 	end.

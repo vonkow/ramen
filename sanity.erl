@@ -145,12 +145,12 @@ checkMsg(Msg) ->
 		{ok, To, Txt} ->
 			case checkStartHash(Msg) of
 				true ->
-					{message, room, To, Txt};
+					{ok, message, room, To, Txt};
 				false ->
-					{message, user, To, Txt}
+					{ok, message, user, To, Txt}
 			end;
 		{error, Info, Data} ->
-			{error, Info, Data}
+			{error, lists:append([Info, Data])}
 	end.
 
 
