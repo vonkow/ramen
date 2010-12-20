@@ -2,6 +2,7 @@
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post.
 % Add timeout and char length check to received msgs
 % Add /login, associate user name with PID (Check if name exists), prevent unlogged users from seeing chat.
+% usernames can't start with # !!!
 % Add username and timestamp to posts.
 % Add chatrooms, make sure user only gets messages from rooms they are in.
 % Add message user.
