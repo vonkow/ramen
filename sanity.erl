@@ -8,7 +8,7 @@
 %		LOGIN , LOGOUT , MSG , JOIN , PART , (HELP , LIST)
 
 % Notes:
-% \r = 13, \n = 10
+% \r = 13, \n = 10, ' ' = 32, # = 35
 
 -module(sanity).
 -author('Caz').
@@ -39,7 +39,7 @@ checkBreaks(S) ->
 	end.
 
 checkStart(S) ->
-	checkStart(S,["LOGIN ", "LOGOUT ", "MSG ", "JOIN ", "PART ", "HELP ", "LIST "]).
+	checkStart(S,["LOGIN ", "LOGOUT", "MSG ", "JOIN ", "PART ", "HELP ", "LIST "]).
 
 checkStart(S,[]) ->
 	{error, lists:append([S, " is not a command"])};
@@ -58,6 +58,14 @@ parseStart(S) ->
 			case {Command} of
 				{"LOGIN"} ->
 					checkLogin(Data);
+				{"LOGOUT"} ->
+					checkLogout(Data);
+				{"JOIN"} ->
+					checkJoin(Data);
+				{"PART"} ->
+					checkPart(Data);
+				{"MSG"} ->
+					checkMsg(Data);
 				{E} ->
 					{error, lists:append([E, " is not a command"])}
 			end;
@@ -78,16 +86,84 @@ checkAndPass(S) ->
 			{error, Reason}
 	end.
 
-checkLogin(Uname) ->
+checkSpace(Txt) ->
 	HasSp = fun(X) -> if X == 32 -> true; true -> false end end,
-	case lists:any(HasSp, Uname) of
+	lists:any(HasSp, Txt).
+
+checkStartHash(Txt) ->
+	case lists:nth(1, Txt) of
+		35 ->
+			true;
+		_ ->
+			false
+	end.
+
+checkLogin(Uname) ->
+	case checkSpace(Uname) of
 		true ->
 			{error, "No spaces allowed in usernames"};
 		false ->
-			case lists:nth(1, Uname) of
-				35 ->
+			case checkStartHash(Uname) of
+				true ->
 					{error, "Usernames may not start with #"};
-				_ ->
+				false ->
 					{ok, "Checking availability", Uname}
 			end
 	end.
+
+checkLogout(_) ->
+	{ok, logout}.
+
+checkJoin(Room) ->
+	case checkSpace(Room) of
+		true ->
+			{error, "No spaces allowed in room names"};
+		false ->
+			case checkStartHash(Room) of
+				true ->
+					{ok, "Checking to join", Room};
+				false ->
+					{error, "Room names must start with #"}
+			end
+	end.
+
+checkPart(Room) ->
+	case checkSpace(Room) of
+		true ->
+			{error, "No spaces allowed in room names"};
+		false ->
+			case checkStartHash(Room) of
+				true ->
+					{ok, "Checking to part", Room};
+				false ->
+					{error, "Room names must start with #"}
+			end
+	end.
+
+checkMsg(Msg) ->
+	case checkStartHash(Msg) of
+		true ->
+			checkMsgRoom(Msg);
+		false ->
+			checkMsgUser(Msg)
+	end.
+
+checkMsgUser(Msg) ->
+	checkMsgUser(Msg, []).
+
+checkMsgUser([], A) ->
+	{error, "Malformed message", A};
+checkMsgUser(Msg, A) ->
+	[Cur | Rest] = Msg,
+	case Cur of
+		32 ->
+			prepareMsgUser(A, Rest);
+		_ ->
+			checkMsgUser(Rest, lists:append([A, [Cur]]))
+	end.
+
+prepareMsgUser(User, Msg) ->
+	{ok, lists:append(["Messaging: ",User]), lists:append([" Message: ", Msg])}.
+
+checkMsgRoom(Msg) ->
+	{ok, "Messaging Room"}.
