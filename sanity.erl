@@ -12,7 +12,7 @@
 
 -module(sanity).
 -author('Caz').
--export([checkEnd/1, checkBreaks/1, checkStart/1, checkStart/2, checkAndPass/1]).
+-export([checkInput/1]).
 
 checkEnd(S) ->
 	case lists:suffix("\r\n", S) of
@@ -73,7 +73,7 @@ parseStart(S) ->
 			{error, Msg}
 	end.
 
-checkAndPass(S) ->
+checkInput(S) ->
 	case checkEnd(S) of
 		{ok, NewS} ->
 			case checkBreaks(NewS) of
@@ -107,7 +107,7 @@ checkLogin(Uname) ->
 				true ->
 					{error, "Usernames may not start with #"};
 				false ->
-					{ok, "Checking availability", Uname}
+					{ok, login, Uname}
 			end
 	end.
 
@@ -121,7 +121,7 @@ checkJoin(Room) ->
 		false ->
 			case checkStartHash(Room) of
 				true ->
-					{ok, "Checking to join", Room};
+					{ok, join, Room};
 				false ->
 					{error, "Room names must start with #"}
 			end
@@ -134,36 +134,43 @@ checkPart(Room) ->
 		false ->
 			case checkStartHash(Room) of
 				true ->
-					{ok, "Checking to part", Room};
+					{ok, part, Room};
 				false ->
 					{error, "Room names must start with #"}
 			end
 	end.
 
 checkMsg(Msg) ->
-	case checkStartHash(Msg) of
-		true ->
-			checkMsgRoom(Msg);
-		false ->
-			checkMsgUser(Msg)
+	case checkMsgData(Msg) of
+		{ok, To, Txt} ->
+			case checkStartHash(Msg) of
+				true ->
+					{message, room, To, Txt};
+				false ->
+					{message, user, To, Txt}
+			end;
+		{error, Info, Data} ->
+			{error, Info, Data}
 	end.
 
-checkMsgUser(Msg) ->
-	checkMsgUser(Msg, []).
 
-checkMsgUser([], A) ->
+checkMsgData(Msg) ->
+	checkMsgData(Msg, []).
+
+checkMsgData([], A) ->
 	{error, "Malformed message", A};
-checkMsgUser(Msg, A) ->
+checkMsgData(Msg, A) ->
 	[Cur | Rest] = Msg,
 	case Cur of
 		32 ->
-			prepareMsgUser(A, Rest);
+			case A of
+				[] ->
+					{error, "Destination user or room not specified", Rest};
+				[35] ->
+					{error, "Destination room not specified", Rest};
+				_ ->
+					{ok, A, Rest}
+			end;
 		_ ->
-			checkMsgUser(Rest, lists:append([A, [Cur]]))
+			checkMsgData(Rest, lists:append([A, [Cur]]))
 	end.
-
-prepareMsgUser(User, Msg) ->
-	{ok, lists:append(["Messaging: ",User]), lists:append([" Message: ", Msg])}.
-
-checkMsgRoom(Msg) ->
-	{ok, "Messaging Room"}.
