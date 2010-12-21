@@ -156,18 +156,23 @@ keepstate(State) ->
 					keepstate(State)
 			end;
 		{message, FromP, ToN, Msg} ->
-			case getUserPid(ToN, State) of
-				{ok, ToP} ->
-					case getUserName(FromP, State) of
-						{ok, FromN} ->
-							sender ! {message, user, FromN, ToP, Msg};
+			case checkIfLoggedIn(FromP, State) of
+				true ->
+					case getUserPid(ToN, State) of
+						{ok, ToP} ->
+							case getUserName(FromP, State) of
+								{ok, FromN} ->
+									sender ! {message, user, FromN, ToP, Msg};
+								{error, Reason} ->
+									sendError(FromP, Reason)
+									%io:format("Error: ~s~n",[Reason])
+							end;
 						{error, Reason} ->
 							sendError(FromP, Reason)
 							%io:format("Error: ~s~n",[Reason])
 					end;
-				{error, Reason} ->
-					sendError(FromP, Reason)
-					%io:format("Error: ~s~n",[Reason])
+				false ->
+					sendError(FromP, "Not logged in")
 			end,
 			keepstate(State);
 		{broadcast, M} ->
