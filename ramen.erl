@@ -1,10 +1,7 @@
 % TODO
-% Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post.
-% Add timeout and char length check to received msgs
-% Add /login, associate user name with PID (Check if name exists), prevent unlogged users from seeing chat.
-% Add username and timestamp to posts.
-% Add chatrooms, make sure user only gets messages from rooms they are in.
-% Add message user.
+% Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
+% Add chatrooms, make sure user only gets and sends messages from rooms they are in.
+% Add Check for blank messages
 
 -module(ramen).
 -author('Caz').
@@ -49,7 +46,6 @@ recvloop(Socket, P) ->
 reqProcessor(P, M) ->
 	case sanity:checkInput(M) of
 		{ok, login, User} ->
-			io:format("Attempting Login of ~s~n", [User]),
 			st ! {login, P, User};
 		{ok, logout} ->
 			st ! {logout, P};
