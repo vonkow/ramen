@@ -9,14 +9,12 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, keepstate/1, sendloop/1, reqhandler/0, sendhandler/0]).
+-export([start/1, keepstate/1, sendloop/1, reqProcessor/2, sendUserMsg/1]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
 start(Port) ->
 	register(st, spawn(ramen, keepstate, [[]])),
-	register(handle, spawn(ramen, reqhandler, [])),
-	register(sender, spawn(ramen, sendhandler, [])),
 	listen(Port).
 
 listen(Port) ->
@@ -41,7 +39,7 @@ addCon(Socket) ->
 recvloop(Socket, P) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
-			handle ! {P, Data},
+			spawn(ramen, reqProcessor, [P, Data]),
 			io:format("Message from ~w: ~s~n", [P, Data]),
 			recvloop(Socket, P);
 		{error, closed} ->
@@ -155,25 +153,8 @@ keepstate(State) ->
 					sendError(P, Reason),
 					keepstate(State)
 			end;
-		{message, FromP, ToN, Msg} ->
-			case checkIfLoggedIn(FromP, State) of
-				true ->
-					case getUserPid(ToN, State) of
-						{ok, ToP} ->
-							case getUserName(FromP, State) of
-								{ok, FromN} ->
-									sender ! {message, user, FromN, ToP, Msg};
-								{error, Reason} ->
-									sendError(FromP, Reason)
-									%io:format("Error: ~s~n",[Reason])
-							end;
-						{error, Reason} ->
-							sendError(FromP, Reason)
-							%io:format("Error: ~s~n",[Reason])
-					end;
-				false ->
-					sendError(FromP, "Not logged in")
-			end,
+		{message, user, FromP, ToN, Msg} ->
+			spawn(ramen, sendUserMsg, [{State, FromP, ToN, Msg}]),
 			keepstate(State);
 		{broadcast, M} ->
 			io:format("Got State: ~w~n", [State]),
@@ -209,12 +190,26 @@ getUserName(P, [Cur|Rest]) ->
 			getUserName(P, Rest)
 	end.
 
-sendhandler() ->
-	receive
-		{message, user, FromName, ToPid, Msg} ->
-			FullMsg = ["GOTUSERMSG ",FromName," ",Msg],
-			ToPid ! {send, FullMsg},
-			sendhandler()
+sendUserMsg({State, FromP, ToN, Msg}) ->
+	case checkIfLoggedIn(FromP, State) of
+		true ->
+			case getUserPid(ToN, State) of
+				{ok, ToP} ->
+					case getUserName(FromP, State) of
+						{ok, FromN} ->
+							FullMsg = ["GOTUSERMSG ",FromN," ",Msg],
+							ToP ! {send, FullMsg},
+							sendOk(FromP);
+						{error, Reason} ->
+							sendError(FromP, Reason)
+							%io:format("Error: ~s~n",[Reason])
+					end;
+				{error, Reason} ->
+					sendError(FromP, Reason)
+					%io:format("Error: ~s~n",[Reason])
+			end;
+		false ->
+			sendError(FromP, "Not logged in")
 	end.
 
 bcast(M, []) -> 
@@ -225,27 +220,19 @@ bcast(M, State) ->
 	P ! {send, M},
 	bcast(M, Rest).
 
-reqhandler() ->
-	receive
-		{P, M} ->
-			case sanity:checkInput(M) of
-				{ok, login, User} ->
-					io:format("Attempting Login of ~s~n", [User]),
-					st ! {login, P, User},
-					reqhandler();
-				{ok, logout} ->
-					st ! {logout, P},
-					reqhandler();
-				{ok, message, room, Room, Txt} ->
-					%st ! {broadcast, Txt},
-					%rst ! {message, P, Room, Txt},
-					reqhandler();
-				{ok, message, user, User, Txt} ->
-					st ! {message, P, User, Txt},
-					reqhandler();
-				{error, Reason} ->
-					% Spit error Message back to user
-					sendError(P, Reason),
-					reqhandler()
-			end
+reqProcessor(P, M) ->
+	case sanity:checkInput(M) of
+		{ok, login, User} ->
+			io:format("Attempting Login of ~s~n", [User]),
+			st ! {login, P, User};
+		{ok, logout} ->
+			st ! {logout, P};
+		{ok, message, room, Room, Txt} ->
+			%rst ! {message, P, Room, Txt},
+			ok;
+		{ok, message, user, User, Txt} ->
+			st ! {message, user, P, User, Txt};
+		{error, Reason} ->
+			% Spit error Message back to user
+			sendError(P, Reason)
 	end.
