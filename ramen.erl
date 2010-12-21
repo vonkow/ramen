@@ -41,7 +41,6 @@ recvloop(Socket, P) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
 			handle ! {P, Data},
-			%st ! {broadcast, Data},
 			io:format("Message from ~w: ~s~n", [P, Data]),
 			recvloop(Socket, P);
 		{error, closed} ->
