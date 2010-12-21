@@ -134,7 +134,7 @@ loginUser(P, User, State) ->
 	TempState = lists:delete(R, State),
 	lists:append([{P,User,[]}], TempState).
 	
-% go thru userlist, find P, check if already logged in, check if name is in use, if not, make P user.
+%swap names with loginUser, for consistancy
 addUser(P, User, State) ->
 	case checkUnameAvail(User, State) of
 		false ->
