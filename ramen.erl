@@ -77,8 +77,7 @@ cull(P, State) ->
 
 checkUnameAvail(User, []) ->
 	true;
-checkUnameAvail(User, State) ->
-	[Cur|Rest] = State,
+checkUnameAvail(User, [Cur|Rest]) ->
 	case Cur of
 		{_,User,_} ->
 			false;
@@ -88,8 +87,7 @@ checkUnameAvail(User, State) ->
 
 checkIfLoggedIn(P, []) ->
 	true;
-checkIfLoggedIn(P, State) ->
-	[Cur|Rest] = State,
+checkIfLoggedIn(P, [Cur|Rest]) ->
 	case Cur of
 		{P, [], []} ->
 			false;
@@ -124,8 +122,7 @@ logoutUser(P, State) ->
 
 logoutUser(P, [], Remains) ->
 	ok;
-logoutUser(P, State, NewState) ->
-	[Cur | Rest] = State,
+logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
 		{P, [], _} ->
 			{error, "Not logged in"};

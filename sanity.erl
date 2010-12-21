@@ -43,8 +43,7 @@ checkStart(S) ->
 
 checkStart(S,[]) ->
 	{error, lists:append([S, " is not a command"])};
-checkStart(S,A) ->
-	[Cur | Rest] = A,
+checkStart(S,[Cur|Rest]) ->
 	case lists:prefix(Cur, S) of
 		true ->
 			{ok,  lists:subtract(Cur, " "), lists:subtract(S, Cur)};
@@ -55,18 +54,18 @@ checkStart(S,A) ->
 parseStart(S) ->
 	case checkStart(S) of
 		{ok, Command, Data} ->
-			case {Command} of
-				{"LOGIN"} ->
+			case Command of
+				"LOGIN" ->
 					checkLogin(Data);
-				{"LOGOUT"} ->
+				"LOGOUT" ->
 					checkLogout(Data);
-				{"JOIN"} ->
+				"JOIN" ->
 					checkJoin(Data);
-				{"PART"} ->
+				"PART" ->
 					checkPart(Data);
-				{"MSG"} ->
+				"MSG" ->
 					checkMsg(Data);
-				{E} ->
+				E ->
 					{error, lists:append([E, " is not a command"])}
 			end;
 		{error, Msg} ->
@@ -159,8 +158,7 @@ checkMsgData(Msg) ->
 
 checkMsgData([], A) ->
 	{error, "Malformed message", A};
-checkMsgData(Msg, A) ->
-	[Cur | Rest] = Msg,
+checkMsgData([Cur|Rest], A) ->
 	case Cur of
 		32 ->
 			case A of
