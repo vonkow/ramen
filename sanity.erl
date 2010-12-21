@@ -97,6 +97,8 @@ checkStartHash(Txt) ->
 			false
 	end.
 
+checkLogin([]) ->
+	{error, "No user name specified"};
 checkLogin(Uname) ->
 	case checkSpace(Uname) of
 		true ->
@@ -144,9 +146,9 @@ checkMsg(Msg) ->
 		{ok, To, Txt} ->
 			case checkStartHash(Msg) of
 				true ->
-					{ok, message, room, To, Txt};
+					{ok, message, room, To, [Txt,"\r\n"]};
 				false ->
-					{ok, message, user, To, Txt}
+					{ok, message, user, To, [Txt,"\r\n"]}
 			end;
 		{error, Info, Data} ->
 			{error, lists:append([Info, Data])}
