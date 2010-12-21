@@ -33,7 +33,7 @@ accept(LSocket) ->
 
 addCon(Socket) ->
 	PID = spawn(ramen, sendloop, [Socket]),
-	spawn(fun() -> recvLoop(Socket, PID) end),
+	spawn(fun() -> recvloop(Socket, PID) end),
 	st ! {add, PID}.
 
 % Need to add something here to check frequency of posts and kill user if over limit
@@ -65,32 +65,108 @@ sendloop(Socket) ->
 bcast(M, []) -> 
 	io:format("Sent: ~s~n", [M]);
 bcast(M, State) ->
-	[{P,_} | Rest] = State,
+	[{P,_,_} | Rest] = State,
 	io:format("Sending to ~w~n", [P]),
 	P ! {send, M},
 	bcast(M, Rest).
 
 % this will need fixing to work with users once logged in
 cull(P, State) ->
-	R = {P,anon},
+	R = {P,[],[]},
 	lists:delete(R, State).
 
+checkUnameAvail(User, []) ->
+	true;
+checkUnameAvail(User, State) ->
+	[Cur|Rest] = State,
+	case Cur of
+		{_,User,_} ->
+			false;
+		{_,_,_} ->
+			checkUnameAvail(User,Rest)
+	end.
+
+checkIfLoggedIn(P, []) ->
+	true;
+checkIfLoggedIn(P, State) ->
+	[Cur|Rest] = State,
+	case Cur of
+		{P, [], []} ->
+			false;
+		{P, A, _} ->
+			true;
+		{_, _, _} ->
+			checkIfLoggedIn(P, Rest)
+	end.
+
+loginUser(P, User, State) ->
+	R = {P,[],[]},
+	TempState = lists:delete(R, State),
+	lists:append([{P,User,[]}], TempState).
+	
+% go thru userlist, find P, check if already logged in, check if name is in use, if not, make P user.
 addUser(P, User, State) ->
-	State.
+	case checkUnameAvail(User, State) of
+		false ->
+			{error, "Username in use"};
+		true ->
+			case checkIfLoggedIn(P, State) of
+				true ->
+					{error, "Already logged in"};
+				false ->
+					NewState = loginUser(P, User, State),
+					{ok, NewState}
+			end
+	end.
+
+logoutUser(P, State) ->
+	logoutUser(P, State, []).
+
+logoutUser(P, [], Remains) ->
+	ok;
+logoutUser(P, State, NewState) ->
+	[Cur | Rest] = State,
+	case Cur of
+		{P, [], _} ->
+			{error, "Not logged in"};
+		{P, U, _} ->
+			TempState = lists:append(Rest, NewState),
+			{ok, lists:append(TempState, [{P,[],[]}])};
+		{_,_,_} ->
+			logoutUser(P, Rest, lists:append(NewState, [Cur]))
+	end.
+			
 
 keepstate(State) ->
 	receive
 		{add, P} ->
-			NewState = [{P, anon} | State],
+			NewState = [{P, [], []} | State],
 			io:format("State: ~w~n", [NewState]),
 			keepstate(NewState);
-		{login, P, User} ->
-			NewState = addUser(P, User, State),
-			keepState(NewState);
 		{remove, P} ->
 			NewState = cull(P, State),
 			io:format("Culled: ~w~n", [P]),
 			keepstate(NewState);
+		{login, P, User} ->
+			case addUser(P, User, State) of
+				{ok, NewState} ->
+					io:format("Login Ok!"),
+					%Send login ok message to User
+					keepstate(NewState);
+				{error, Msg} ->
+					io:format("Error: ~s~n", [Msg]),
+					%Send error to user
+					keepstate(State)
+			end;
+		{logout, P} ->
+			case logoutUser(P, State) of
+				{ok, NewState} ->
+					io:format("Logout ok!", []),
+					keepstate(NewState);
+				{error, Msg} ->
+					io:format("Error: ~s~n", [Msg]),
+					keepstate(State)
+			end;
 		{broadcast, M} ->
 			io:format("Got State: ~w~n", [State]),
 			bcast(M, State),
@@ -104,7 +180,11 @@ reqhandler() ->
 		{P, M} ->
 			case sanity:checkInput(M) of
 				{ok, login, User} ->
+					io:format("Attempting Login of ~s~n", [User]),
 					st ! {login, P, User},
+					reqhandler();
+				{ok, logout} ->
+					st ! {logout, P},
 					reqhandler();
 				{ok, message, room, Room, Txt} ->
 					st ! {broadcast, Txt},
