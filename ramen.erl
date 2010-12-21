@@ -46,6 +46,23 @@ recvloop(Socket, P) ->
 			ok
 	end.
 
+reqProcessor(P, M) ->
+	case sanity:checkInput(M) of
+		{ok, login, User} ->
+			io:format("Attempting Login of ~s~n", [User]),
+			st ! {login, P, User};
+		{ok, logout} ->
+			st ! {logout, P};
+		{ok, message, room, Room, Txt} ->
+			%rst ! {message, P, Room, Txt},
+			ok;
+		{ok, message, user, User, Txt} ->
+			st ! {message, user, P, User, Txt};
+		{error, Reason} ->
+			% Spit error Message back to user
+			sendError(P, Reason)
+	end.
+
 sendloop(Socket) ->
 	receive
 		{send, M} ->
@@ -59,6 +76,34 @@ sendloop(Socket) ->
 					st ! {remove, self()},
 					ok
 			end
+	end.
+
+sendOk(P) ->
+	P ! {send, "OK\r\n"}.
+
+sendError(P, Reason) ->
+	P ! {send, ["ERROR ", Reason, "\r\n"]}.
+
+sendUserMsg({State, FromP, ToN, Msg}) ->
+	case checkIfLoggedIn(FromP, State) of
+		true ->
+			case getUserPid(ToN, State) of
+				{ok, ToP} ->
+					case getUserName(FromP, State) of
+						{ok, FromN} ->
+							FullMsg = ["GOTUSERMSG ",FromN," ",Msg],
+							ToP ! {send, FullMsg},
+							sendOk(FromP);
+						{error, Reason} ->
+							sendError(FromP, Reason)
+							%io:format("Error: ~s~n",[Reason])
+					end;
+				{error, Reason} ->
+					sendError(FromP, Reason)
+					%io:format("Error: ~s~n",[Reason])
+			end;
+		false ->
+			sendError(FromP, "Not logged in")
 	end.
 
 % this will need fixing to work with users once logged in
@@ -164,12 +209,6 @@ keepstate(State) ->
 			ok
 	end.
 
-sendOk(P) ->
-	P ! {send, "OK\r\n"}.
-
-sendError(P, Reason) ->
-	P ! {send, ["ERROR ", Reason, "\r\n"]}.
-
 getUserPid(_, []) ->
 	{error, "User not logged in"};
 getUserPid(Uname, [Cur|Rest]) ->
@@ -190,28 +229,7 @@ getUserName(P, [Cur|Rest]) ->
 			getUserName(P, Rest)
 	end.
 
-sendUserMsg({State, FromP, ToN, Msg}) ->
-	case checkIfLoggedIn(FromP, State) of
-		true ->
-			case getUserPid(ToN, State) of
-				{ok, ToP} ->
-					case getUserName(FromP, State) of
-						{ok, FromN} ->
-							FullMsg = ["GOTUSERMSG ",FromN," ",Msg],
-							ToP ! {send, FullMsg},
-							sendOk(FromP);
-						{error, Reason} ->
-							sendError(FromP, Reason)
-							%io:format("Error: ~s~n",[Reason])
-					end;
-				{error, Reason} ->
-					sendError(FromP, Reason)
-					%io:format("Error: ~s~n",[Reason])
-			end;
-		false ->
-			sendError(FromP, "Not logged in")
-	end.
-
+% Keeping this around for when rooms are added.
 bcast(M, []) -> 
 	io:format("Sent: ~s~n", [M]);
 bcast(M, State) ->
@@ -219,20 +237,3 @@ bcast(M, State) ->
 	io:format("Sending to ~w~n", [P]),
 	P ! {send, M},
 	bcast(M, Rest).
-
-reqProcessor(P, M) ->
-	case sanity:checkInput(M) of
-		{ok, login, User} ->
-			io:format("Attempting Login of ~s~n", [User]),
-			st ! {login, P, User};
-		{ok, logout} ->
-			st ! {logout, P};
-		{ok, message, room, Room, Txt} ->
-			%rst ! {message, P, Room, Txt},
-			ok;
-		{ok, message, user, User, Txt} ->
-			st ! {message, user, P, User, Txt};
-		{error, Reason} ->
-			% Spit error Message back to user
-			sendError(P, Reason)
-	end.
