@@ -267,6 +267,11 @@ joinRoom([Cur|Rest], P, Room, Acc) ->
 			joinRoom(Rest, P, Room, lists:append(Acc,[Cur]))
 	end.
 
+checkRoomLen(Users) when length(Users) > 1 ->
+	ok;
+checkRoomLen(_) ->
+	nok.
+
 partRoom(State, P, Room) ->
 	partRoom(State, P, Room, []).
 
@@ -278,9 +283,13 @@ partRoom([Cur|Rest], P, Room, Acc) ->
 			HasP = fun(X) -> if X == P -> true; true -> false end end,
 			case lists:any(HasP, Users) of
 				true ->
-					NewRoom = {Room, lists:delete(P, Users)},
-					% check if users is blank, and if so remove room.
-					{ok, lists:append([Acc, [NewRoom], Rest])};
+					case checkRoomLen(Users) of
+						ok ->
+							NewRoom = {Room, lists:delete(P, Users)},
+							{ok, lists:append([Acc, [NewRoom], Rest])};
+						nok ->
+							{ok, lists:append([Acc, Rest])}
+					end;
 				false ->
 					{error, "Not Logged in to room"}
 			end;
@@ -295,7 +304,6 @@ roomstate(State) ->
 			%check with state about being logged in before allowing to join room
 			case joinRoom(State, P, Room) of
 				{ok, NewState} ->
-					%message st to add room to P
 					P ! {addroom, Room},
 					io:format("rst Rooms: ~w~n", [NewState]),
 					sendOk(P),
