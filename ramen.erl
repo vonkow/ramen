@@ -50,6 +50,10 @@ reqProcessor(P, M) ->
 			st ! {login, P, User};
 		{ok, logout} ->
 			st ! {logout, P};
+		{ok, join, Room} ->
+			rooms ! {join, P, Room};
+		{ok, part, Room} ->
+			rooms ! {part, P, Room};
 		{ok, message, room, Room, Txt} ->
 			%rst ! {message, P, Room, Txt},
 			ok;
@@ -102,8 +106,8 @@ sendUserMsg({State, FromP, ToN, Msg}) ->
 			sendError(FromP, "Not logged in")
 	end.
 
-% this will need fixing to work with users once logged in
 cull(P, State) ->
+	% fix to work with logged in users and to remove rooms from rst
 	R = {P,[],[]},
 	lists:delete(R, State).
 
@@ -158,7 +162,8 @@ logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
 		{P, [], _} ->
 			{error, "Not logged in"};
-		{P, U, _} ->
+		{P, U, Rooms} ->
+			% Send rooms and Pid to rst, to remove user from room
 			TempState = lists:append(Rest, NewState),
 			{ok, lists:append(TempState, [{P,[],[]}])};
 		{_,_,_} ->
@@ -233,8 +238,17 @@ bcast(M, State) ->
 	P ! {send, M},
 	bcast(M, Rest).
 
+% loop through rooms
+%	if room
+%		check if user is alread in room
+%		if not, add user, add room to user
+%	if not
+%		create room, add user add room to user
+
 roomstate(State) ->
 	receive
-		{addroom, room} ->
+		{join, P, Room} ->
+			roomstate(State);
+		{addroom, room, P} ->
 			roomstate(State)
 	end.
