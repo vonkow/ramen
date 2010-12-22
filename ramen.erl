@@ -6,7 +6,7 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, userstate/1, roomstate/1, sendloop/1, reqProcessor/2, sendUserMsg/1]).
+-export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, joinRoom/3, joinRoom/4]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
@@ -29,7 +29,7 @@ accept(LSocket) ->
 	end.
 
 addCon(Socket) ->
-	PID = spawn(ramen, sendloop, [Socket]),
+	PID = spawn(ramen, sendloop, [Socket, []]),
 	spawn(fun() -> recvloop(Socket, PID) end),
 	st ! {add, PID}.
 
@@ -64,18 +64,22 @@ reqProcessor(P, M) ->
 			sendError(P, Reason)
 	end.
 
-sendloop(Socket) ->
+sendloop(Socket, Rooms) ->
 	receive
 		{send, M} ->
 			case gen_tcp:send(Socket, M) of
 				ok ->
 					io:format("Sent ~w to ~w~n", [ok, self()]),
-					sendloop(Socket);
+					sendloop(Socket, Rooms);
 				{error, _} ->
 					io:format("Closed ~w~n", [self()]),
 					st ! {remove, self()},
 					ok
-			end
+			end;
+		{addroom, Room} ->
+			NewRooms = lists:append(Rooms, [Room]),
+			io:format("slp Rooms: ~s~n", [NewRooms]),
+			sendloop(Socket, NewRooms)
 	end.
 
 sendOk(P) ->
@@ -244,17 +248,24 @@ bcast(M, State) ->
 %		if not, add user, add room to user
 %	if not
 %		create room, add user add room to user
-joinRoom(State, P, U) ->
-	joinRoom(State, P, U, []).
+joinRoom(State, P, Room) ->
+	joinRoom(State, P, Room, []).
 
 joinRoom([], P, Room, _) ->
-	{create, P, Room};
+	{create};
 joinRoom([Cur|Rest], P, Room, Acc) ->
 	case Cur of
-		{Room,_} ->
+		{Room,Users} ->
+			HasP = fun(X) -> if X == P -> true; true -> false end end,
+			case lists:any(HasP, Users) of
+				false ->
+					NewRoom = {Room,lists:append(Users,[P])},
+					{ok, lists:append([Acc, [NewRoom], Rest])};
+				true ->
+					{error,"Already in room"}
+			end;
 			% check if user is in room, add user to room
 			% merge Cur, Rest and Acc
-			ok;
 		{_,_} ->
 			joinRoom(Rest, P, Room, lists:append(Acc,[Cur]))
 	end.
@@ -262,7 +273,28 @@ joinRoom([Cur|Rest], P, Room, Acc) ->
 roomstate(State) ->
 	receive
 		{join, P, Room} ->
-			roomstate(State);
+			io:format("Trying ~w join ~s~n", [P, Room]),
+			%check with state about being logged in before allowing to join room
+			case joinRoom(State, P, Room) of
+				{ok, NewState} ->
+					%message st to add room to P
+					P ! {addroom, Room},
+					io:format("rst Rooms: ~w~n", [NewState]),
+					sendOk(P),
+					roomstate(NewState);
+				{create} ->
+					io:format("Trying to create room ~s for user ~w~n",[Room, P]),
+					io:format("Current State: ~w~n", [State]),
+					TempState = [{Room,[P]} | State],
+					io:format("rst Rooms: ~w~n", [TempState]),
+					P ! {addroom, Room},
+					sendOk(P),
+					roomstate(TempState);
+				{error, Reason} ->
+					%send error
+					sendError(P, Reason),
+					roomstate(State)
+			end;
 		{addroom, room, P} ->
 			roomstate(State)
 	end.
