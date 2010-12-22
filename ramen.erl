@@ -244,6 +244,20 @@ bcast(M, State) ->
 %		if not, add user, add room to user
 %	if not
 %		create room, add user add room to user
+joinRoom(State, P, U) ->
+	joinRoom(State, P, U, []).
+
+joinRoom([], P, Room, _) ->
+	{create, P, Room};
+joinRoom([Cur|Rest], P, Room, Acc) ->
+	case Cur of
+		{Room,_} ->
+			% check if user is in room, add user to room
+			% merge Cur, Rest and Acc
+			ok;
+		{_,_} ->
+			joinRoom(Rest, P, Room, lists:append(Acc,[Cur]))
+	end.
 
 roomstate(State) ->
 	receive
