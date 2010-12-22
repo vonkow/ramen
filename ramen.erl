@@ -10,7 +10,7 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, joinRoom/3, joinRoom/4]).
+-export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
@@ -59,12 +59,11 @@ reqProcessor(P, M) ->
 		{ok, part, Room} ->
 			rooms ! {part, P, Room};
 		{ok, message, room, Room, Txt} ->
-			%rst ! {message, P, Room, Txt},
+			%rooms ! {message, P, Room, Txt},
 			ok;
 		{ok, message, user, User, Txt} ->
 			st ! {message, user, P, User, Txt};
 		{error, Reason} ->
-			% Spit error Message back to user
 			sendError(P, Reason)
 	end.
 
@@ -108,11 +107,9 @@ sendUserMsg({State, FromP, ToN, Msg}) ->
 							sendOk(FromP);
 						{error, Reason} ->
 							sendError(FromP, Reason)
-							%io:format("Error: ~s~n",[Reason])
 					end;
 				{error, Reason} ->
 					sendError(FromP, Reason)
-					%io:format("Error: ~s~n",[Reason])
 			end;
 		false ->
 			sendError(FromP, "Not logged in")
@@ -250,12 +247,6 @@ bcast(M, State) ->
 	P ! {send, M},
 	bcast(M, Rest).
 
-% loop through rooms
-%	if room
-%		check if user is alread in room
-%		if not, add user, add room to user
-%	if not
-%		create room, add user add room to user
 joinRoom(State, P, Room) ->
 	joinRoom(State, P, Room, []).
 
@@ -272,8 +263,6 @@ joinRoom([Cur|Rest], P, Room, Acc) ->
 				true ->
 					{error,"Already in room"}
 			end;
-			% check if user is in room, add user to room
-			% merge Cur, Rest and Acc
 		{_,_} ->
 			joinRoom(Rest, P, Room, lists:append(Acc,[Cur]))
 	end.
