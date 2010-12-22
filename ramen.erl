@@ -2,6 +2,10 @@
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
 % Add chatrooms, make sure user only gets and sends messages from rooms they are in.
 % Add Check for blank messages
+% Make sure users can't join rooms when not logged in
+% Remove rooms with no users
+% Handle removing timed out users from rooms
+% remove empty array from userstate where rooms were going to be held
 
 -module(ramen).
 -author('Caz').
@@ -78,6 +82,10 @@ sendloop(Socket, Rooms) ->
 			end;
 		{addroom, Room} ->
 			NewRooms = lists:append(Rooms, [Room]),
+			io:format("slp Rooms: ~s~n", [NewRooms]),
+			sendloop(Socket, NewRooms);
+		{leaveroom, Room} ->
+			NewRooms = lists:delete(Room, Rooms),
 			io:format("slp Rooms: ~s~n", [NewRooms]),
 			sendloop(Socket, NewRooms)
 	end.
@@ -270,6 +278,27 @@ joinRoom([Cur|Rest], P, Room, Acc) ->
 			joinRoom(Rest, P, Room, lists:append(Acc,[Cur]))
 	end.
 
+partRoom(State, P, Room) ->
+	partRoom(State, P, Room, []).
+
+partRoom([], _, _, _) ->
+	{error, "Not Logged in to room"};
+partRoom([Cur|Rest], P, Room, Acc) ->
+	case Cur of
+		{Room, Users} ->
+			HasP = fun(X) -> if X == P -> true; true -> false end end,
+			case lists:any(HasP, Users) of
+				true ->
+					NewRoom = {Room, lists:delete(P, Users)},
+					% check if users is blank, and if so remove room.
+					{ok, lists:append([Acc, [NewRoom], Rest])};
+				false ->
+					{error, "Not Logged in to room"}
+			end;
+		{_,_} ->
+			partRoom(Rest, P, Room, lists:append(Acc,[Cur]))
+	end.
+
 roomstate(State) ->
 	receive
 		{join, P, Room} ->
@@ -295,6 +324,16 @@ roomstate(State) ->
 					sendError(P, Reason),
 					roomstate(State)
 			end;
-		{addroom, room, P} ->
-			roomstate(State)
+		{part, P, Room} ->
+			io:format("Trying ~w part ~s~n", [P, Room]),
+			case partRoom(State, P, Room) of
+				{ok, NewState} ->
+					P ! {leaveroom, Room},
+					io:format("rst Rooms: ~w~n", [NewState]),
+					sendOk(P),
+					roomstate(NewState);
+				{error, Reason} ->
+					sendError(P, Reason),
+					roomstate(State)
+			end
 	end.
