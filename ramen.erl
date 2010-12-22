@@ -6,12 +6,13 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, keepstate/1, sendloop/1, reqProcessor/2, sendUserMsg/1]).
+-export([start/1, userstate/1, roomstate/1, sendloop/1, reqProcessor/2, sendUserMsg/1]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
 start(Port) ->
-	register(st, spawn(ramen, keepstate, [[]])),
+	register(st, spawn(ramen, userstate, [[]])),
+	register(rooms, spawn(ramen, roomstate, [[]])),
 	listen(Port).
 
 listen(Port) ->
@@ -68,7 +69,6 @@ sendloop(Socket) ->
 					sendloop(Socket);
 				{error, _} ->
 					io:format("Closed ~w~n", [self()]),
-					% send call to keepstate to remove pid
 					st ! {remove, self()},
 					ok
 			end
@@ -164,46 +164,6 @@ logoutUser(P, [Cur|Rest], NewState) ->
 		{_,_,_} ->
 			logoutUser(P, Rest, lists:append(NewState, [Cur]))
 	end.
-			
-
-keepstate(State) ->
-	receive
-		{add, P} ->
-			NewState = [{P, [], []} | State],
-			%io:format("State: ~w~n", [NewState]),
-			keepstate(NewState);
-		{remove, P} ->
-			NewState = cull(P, State),
-			%io:format("Culled: ~w~n", [P]),
-			keepstate(NewState);
-		{login, P, User} ->
-			case addUser(P, User, State) of
-				{ok, NewState} ->
-					sendOk(P),
-					keepstate(NewState);
-				{error, Reason} ->
-					sendError(P, Reason),
-					keepstate(State)
-			end;
-		{logout, P} ->
-			case logoutUser(P, State) of
-				{ok, NewState} ->
-					sendOk(P),
-					keepstate(NewState);
-				{error, Reason} ->
-					sendError(P, Reason),
-					keepstate(State)
-			end;
-		{message, user, FromP, ToN, Msg} ->
-			spawn(ramen, sendUserMsg, [{State, FromP, ToN, Msg}]),
-			keepstate(State);
-		{broadcast, M} ->
-			io:format("Got State: ~w~n", [State]),
-			bcast(M, State),
-			keepstate(State);
-		quit ->
-			ok
-	end.
 
 getUserPid(_, []) ->
 	{error, "User not logged in"};
@@ -225,6 +185,45 @@ getUserName(P, [Cur|Rest]) ->
 			getUserName(P, Rest)
 	end.
 
+userstate(State) ->
+	receive
+		{add, P} ->
+			NewState = [{P, [], []} | State],
+			%io:format("State: ~w~n", [NewState]),
+			userstate(NewState);
+		{remove, P} ->
+			NewState = cull(P, State),
+			%io:format("Culled: ~w~n", [P]),
+			userstate(NewState);
+		{login, P, User} ->
+			case addUser(P, User, State) of
+				{ok, NewState} ->
+					sendOk(P),
+					userstate(NewState);
+				{error, Reason} ->
+					sendError(P, Reason),
+					userstate(State)
+			end;
+		{logout, P} ->
+			case logoutUser(P, State) of
+				{ok, NewState} ->
+					sendOk(P),
+					userstate(NewState);
+				{error, Reason} ->
+					sendError(P, Reason),
+					userstate(State)
+			end;
+		{message, user, FromP, ToN, Msg} ->
+			spawn(ramen, sendUserMsg, [{State, FromP, ToN, Msg}]),
+			userstate(State);
+		{broadcast, M} ->
+			io:format("Got State: ~w~n", [State]),
+			bcast(M, State),
+			userstate(State);
+		quit ->
+			ok
+	end.
+
 % Keeping this around for when rooms are added.
 bcast(M, []) -> 
 	io:format("Sent: ~s~n", [M]);
@@ -233,3 +232,9 @@ bcast(M, State) ->
 	io:format("Sending to ~w~n", [P]),
 	P ! {send, M},
 	bcast(M, Rest).
+
+roomstate(State) ->
+	receive
+		{addroom, room} ->
+			roomstate(State)
+	end.
