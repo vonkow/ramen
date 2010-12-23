@@ -336,8 +336,10 @@ removeFromRooms([], _, _, Acc) ->
 removeFromRooms([{Room,Users}|Rest], P, Roomlist, Acc) ->
 	HasRoom = fun(X) -> if X == Room -> true; true -> false end end,
 	case lists:any(HasRoom, Roomlist) of
-		true ->
+		true when length(Users) > 1 ->
 			removeFromRooms(Rest, P, Roomlist, lists:append(Acc, [{Room, lists:delete(P, Users)}]));
+		true ->
+			removeFromRooms(Rest, P, Roomlist, Acc);
 		false ->
 			removeFromRooms(Rest, P, Roomlist, lists:append(Acc, [{Room, Users}]))
 	end.
