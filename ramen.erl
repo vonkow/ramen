@@ -286,7 +286,7 @@ callUserLookup(P, PassOn) ->
 
 findRoom(_, []) ->
 	{error, "No room of that name"};
-findRoom(Room, [Cur|Rest) ->
+findRoom(Room, [Cur|Rest]) ->
 	case Cur of
 		{Room, Userlist} ->
 			{ok, Userlist};
