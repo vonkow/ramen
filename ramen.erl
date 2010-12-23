@@ -5,7 +5,6 @@
 % Add Check for blank messages
 % Make sure users can't join rooms when not logged in
 % Handle removing timed out users from rooms
-% remove empty array from userstate where rooms were going to be held
 
 -module(ramen).
 -author('Caz').
@@ -198,7 +197,6 @@ userstate(State) ->
 		%This line will be useless soon
 		{remove, P} ->
 			NewState = cull(P, State),
-			%io:format("Culled: ~w~n", [P]),
 			userstate(NewState);
 		{login, P, User} ->
 			case loginUser(P, User, State) of
