@@ -3,6 +3,7 @@
 % Add Check for blank messages
 % !!! Remove users from roomstate on logout and timeout
 % Handle removing timed out users from rooms
+% sendloop need to shutdown recvloop
 
 -module(ramen).
 -author('Caz').
@@ -160,7 +161,7 @@ logoutUser(P, [], Remains) ->
 logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
 		{P, U} ->
-			% Send rooms and Pid to rooms, to remove user from rooms
+			P ! logout,
 			{ok, lists:append(Rest, NewState)};
 		{_,_} ->
 			logoutUser(P, Rest, lists:append(NewState, [Cur]))
