@@ -1,9 +1,7 @@
 % TODO
-% !!! Don't add non-logged users to userstate? This could fix things nicely
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
-% Add chatrooms, make sure user only gets and sends messages from rooms they are in.
 % Add Check for blank messages
-% Make sure users can't join rooms when not logged in
+% !!! Remove users from roomstate on logout and timeout
 % Handle removing timed out users from rooms
 
 -module(ramen).
@@ -52,6 +50,7 @@ reqProcessor(P, M) ->
 		{ok, login, User} ->
 			st ! {login, P, User};
 		{ok, logout} ->
+			P ! logout,
 			st ! {logout, P};
 		{ok, join, Room} ->
 			spawn(ramen, callUserLookup, [P, {join, P, Room}]);
@@ -76,7 +75,9 @@ sendloop(Socket, Rooms) ->
 				{error, _} ->
 					io:format("Closed ~w~n", [self()]),
 					% Here's where we need to add stuff that culls unreachable users from userstate and roomstate
-					st ! {remove, self()},
+					rooms ! {remove, self(), Rooms},
+					%this needs rewriting
+					%st ! {remove, self()},
 					ok
 			end;
 		{addroom, Room} ->
@@ -86,7 +87,10 @@ sendloop(Socket, Rooms) ->
 		{leaveroom, Room} ->
 			NewRooms = lists:delete(Room, Rooms),
 			io:format("slp Rooms: ~s~n", [NewRooms]),
-			sendloop(Socket, NewRooms)
+			sendloop(Socket, NewRooms);
+		logout ->
+			rooms ! {remove, self(), Rooms},
+			sendloop(Socket, [])
 	end.
 
 sendOk(P) ->
@@ -294,15 +298,52 @@ findRoom(Room, [Cur|Rest]) ->
 			findRoom(Room, Rest)
 	end.
 
+broadcastMessage([], _, _) ->
+	% message sent
+	ok;
+broadcastMessage([Cur|Rest], P, Msg) ->
+	case Cur of
+		P ->
+			sendOk(P),
+			broadcastMessage(Rest, P, Msg);
+		_ ->
+			Cur ! {send, Msg},
+			broadcastMessage(Rest, P, Msg)
+	end.
+
+broadcastMessage(ToList, FromRoom, FromP, FromName, Txt) ->
+	broadcastMessage(ToList, FromP, ["GOTROOMMSG ", FromName, " ", FromRoom, " ", Txt]).
+
 messageRoom(State, P, Uname, Room, Txt) ->
 	case findRoom(Room, State) of
 		{ok, Users} ->
-			%Room found, check that user is in room and start messaging users
-			ok;
+			HasP = fun(X) -> if X == P -> true; true -> false end end,
+			case lists:any(HasP, Users) of
+				true ->
+					broadcastMessage(Users, Room, P, Uname, Txt);
+				false ->
+					sendError(P, "Not in room")
+			end;
 		{error, Reason} ->
-			%No room of that name, spit error back to sender
-			ok
+			sendError(P, "No room of that name")
 	end.
+
+removeFromRooms(Rooms, P, Roomlist) ->
+	removeFromRooms(Rooms, P, Roomlist, []).
+
+removeFromRooms([], _, _, Acc) ->
+	{ok, Acc};
+removeFromRooms([{Room,Users}|Rest], P, Roomlist, Acc) ->
+	HasRoom = fun(X) -> if X == Room -> true; true -> false end end,
+	case lists:any(HasRoom, Roomlist) of
+		true ->
+			removeFromRooms(Rest, P, Roomlist, lists:append(Acc, [{Room, lists:delete(P, Users)}]));
+		false ->
+			removeFromRooms(Rest, P, Roomlist, lists:append(Acc, [{Room, Users}]))
+	end.
+
+	% If current room is on roomlist, remove P from users
+	% Add room to Acc after processing
 
 roomstate(State) ->
 	receive
@@ -341,5 +382,12 @@ roomstate(State) ->
 			end;
 		[Uname, {message, P, Room, Txt}] ->
 			spawn(ramen, messageRoom, [State, P, Uname, Room, Txt]),
-			roomstate(State)
+			roomstate(State);
+		{remove, P, Rooms} ->
+			case removeFromRooms(State, P, Rooms) of
+				{ok, NewState} ->
+					roomstate(NewState);
+				{error, _} ->
+					roomstate(State)
+			end
 	end.
