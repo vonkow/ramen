@@ -43,7 +43,7 @@ recvloop(Socket, P) ->
 			% Add logic to remove user and user's joined rooms
 			P ! logout,
 			st ! {logout, P},
-			io:format("Closed ~w~n", [P]),
+			io:format("Recv Closed ~w~n", [P]),
 			ok
 	end.
 
@@ -75,7 +75,7 @@ sendloop(Socket, Rooms) ->
 					io:format("Sent ~w to ~w~n", [ok, self()]),
 					sendloop(Socket, Rooms);
 				{error, _} ->
-					io:format("Closed ~w~n", [self()]),
+					io:format("Send Closed ~w~n", [self()]),
 					% Here's where we need to add stuff that culls unreachable users from userstate and roomstate
 					rooms ! {remove, self(), Rooms},
 					st ! {logout, self()},
