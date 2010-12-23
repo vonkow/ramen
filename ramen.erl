@@ -114,19 +114,14 @@ sendUserMsg({State, FromP, ToN, Msg}) ->
 			sendError(FromP, "Not logged in")
 	end.
 
-% This is currently useless
-cull(P, State) ->
-	% fix to work with logged in users and to remove rooms from rst
-	R = {P,[]},
-	lists:delete(R, State).
-
+%merge with check if logged in?
 checkUnameAvail(User, []) ->
 	true;
 checkUnameAvail(User, [Cur|Rest]) ->
 	case Cur of
 		{_,User} ->
 			false;
-		{_,_} ->
+		_ ->
 			checkUnameAvail(User,Rest)
 	end.
 
@@ -136,7 +131,7 @@ checkIfLoggedIn(P, [Cur|Rest]) ->
 	case Cur of
 		{P, _} ->
 			true;
-		{_, _} ->
+		_ ->
 			checkIfLoggedIn(P, Rest)
 	end.
 
@@ -197,15 +192,7 @@ userLookup(State, P, Callback) ->
 
 userstate(State) ->
 	receive
-		%This line will be useless soon
-		{add, P} ->
-			NewState = [{P, []} | State],
-			%io:format("State: ~w~n", [NewState]),
-			userstate(NewState);
-		%This line will be useless soon
-		{remove, P} ->
-			NewState = cull(P, State),
-			userstate(NewState);
+		%blocks
 		{login, P, User} ->
 			case loginUser(P, User, State) of
 				{ok, NewState} ->
@@ -215,6 +202,7 @@ userstate(State) ->
 					sendError(P, Reason),
 					userstate(State)
 			end;
+		%blocks
 		{logout, P} ->
 			case logoutUser(P, State) of
 				{ok, NewState} ->
@@ -224,29 +212,17 @@ userstate(State) ->
 					sendError(P, Reason),
 					userstate(State)
 			end;
+		%non-blocking
 		{message, user, FromP, ToN, Msg} ->
 			spawn(ramen, sendUserMsg, [{State, FromP, ToN, Msg}]),
 			userstate(State);
+		%non-blocking
 		{userlookup, P, Callback} ->
 			spawn(ramen, userLookup, [State, P, Callback]),
-			userstate(State);
-		% This is useless
-		{broadcast, M} ->
-			io:format("Got State: ~w~n", [State]),
-			bcast(M, State),
 			userstate(State);
 		quit ->
 			ok
 	end.
-
-% Keeping this around for when rooms are added.
-bcast(M, []) -> 
-	io:format("Sent: ~s~n", [M]);
-bcast(M, State) ->
-	[{P,_,_} | Rest] = State,
-	io:format("Sending to ~w~n", [P]),
-	P ! {send, M},
-	bcast(M, Rest).
 
 joinRoom(State, P, Room) ->
 	joinRoom(State, P, Room, []).
