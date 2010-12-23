@@ -1,9 +1,7 @@
 % TODO
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
 % Add Check for blank messages
-% !!! Remove users from roomstate on logout and timeout
-% Handle removing timed out users from rooms
-% sendloop need to shutdown recvloop
+% sendloop need to shutdown recvloop?
 
 -module(ramen).
 -author('Caz').
@@ -43,6 +41,9 @@ recvloop(Socket, P) ->
 			recvloop(Socket, P);
 		{error, closed} ->
 			% Add logic to remove user and user's joined rooms
+			P ! logout,
+			st ! {logout, P},
+			io:format("Closed ~w~n", [P]),
 			ok
 	end.
 
@@ -77,6 +78,7 @@ sendloop(Socket, Rooms) ->
 					io:format("Closed ~w~n", [self()]),
 					% Here's where we need to add stuff that culls unreachable users from userstate and roomstate
 					rooms ! {remove, self(), Rooms},
+					st ! {logout, self()},
 					%this needs rewriting
 					%st ! {remove, self()},
 					ok
@@ -91,6 +93,7 @@ sendloop(Socket, Rooms) ->
 			sendloop(Socket, NewRooms);
 		logout ->
 			rooms ! {remove, self(), Rooms},
+
 			sendloop(Socket, [])
 	end.
 
