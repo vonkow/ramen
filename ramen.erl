@@ -6,7 +6,7 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, userLookup/3, callUserLookup/2, messageRoom/5]).
+-export([start/1, stop/0, accept/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, userLookup/3, callUserLookup/2, messageRoom/5]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
@@ -15,9 +15,14 @@ start(Port) ->
 	register(rooms, spawn(ramen, roomstate, [[]])),
 	listen(Port).
 
+stop() ->
+	exit(serv, kill),
+	exit(st, kill),
+	exit(rooms, kill).
+
 listen(Port) ->
 	{ok, LSocket} = gen_tcp:listen(Port, ?TCP_OPTIONS),
-	accept(LSocket).
+	register(serv, spawn(ramen, accept, [LSocket])).
 
 accept(LSocket) ->
 	case gen_tcp:accept(LSocket) of
