@@ -9,7 +9,7 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1]).
+-export([start/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, userLookup/3, callUserLookup/2, messageRoom/5]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
@@ -54,18 +54,18 @@ reqProcessor(P, M) ->
 		{ok, logout} ->
 			st ! {logout, P};
 		{ok, join, Room} ->
-			rooms ! {join, P, Room};
+			spawn(ramen, callUserLookup, [P, {join, P, Room}]);
 		{ok, part, Room} ->
-			rooms ! {part, P, Room};
+			spawn(ramen, callUserLookup, [P, {part, P, Room}]);
 		{ok, message, room, Room, Txt} ->
-			%rooms ! {message, P, Room, Txt},
-			ok;
+			spawn(ramen, callUserLookup, [P, {message, P, Room, Txt}]);
 		{ok, message, user, User, Txt} ->
 			st ! {message, user, P, User, Txt};
 		{error, Reason} ->
 			sendError(P, Reason)
 	end.
 
+% This is the Pid that is referenced for connections, recvloop is given a copy of the pid.
 sendloop(Socket, Rooms) ->
 	receive
 		{send, M} ->
@@ -157,11 +157,11 @@ logoutUser(P, State) ->
 	logoutUser(P, State, []).
 
 logoutUser(P, [], Remains) ->
-	{error, "Not logged in"};
+	{error, "You are not logged in"};
 logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
 		{P, U} ->
-			% Send rooms and Pid to rst, to remove user from room
+			% Send rooms and Pid to rooms, to remove user from rooms
 			{ok, lists:append(Rest, NewState)};
 		{_,_} ->
 			logoutUser(P, Rest, lists:append(NewState, [Cur]))
@@ -185,6 +185,14 @@ getUserName(P, [Cur|Rest]) ->
 			{ok, Uname};
 		{_,_} ->
 			getUserName(P, Rest)
+	end.
+
+userLookup(State, P, Callback) ->
+	case getUserName(P, State) of
+		{ok, Uname} ->
+			Callback ! {ok, Uname};
+		{error, _} ->
+			Callback ! {error}
 	end.
 
 userstate(State) ->
@@ -219,6 +227,10 @@ userstate(State) ->
 		{message, user, FromP, ToN, Msg} ->
 			spawn(ramen, sendUserMsg, [{State, FromP, ToN, Msg}]),
 			userstate(State);
+		{userlookup, P, Callback} ->
+			spawn(ramen, userLookup, [State, P, Callback]),
+			userstate(State);
+		% This is useless
 		{broadcast, M} ->
 			io:format("Got State: ~w~n", [State]),
 			bcast(M, State),
@@ -286,11 +298,40 @@ partRoom([Cur|Rest], P, Room, Acc) ->
 			partRoom(Rest, P, Room, lists:append(Acc,[Cur]))
 	end.
 
+callUserLookup(P, PassOn) ->
+	st ! {userlookup, P, self()},
+	% maybe add a timeout on receive?
+	receive
+		{ok, Uname} ->
+			rooms ! [Uname, PassOn];
+		{error} ->
+			sendError(P, "You are not logged in")
+	end.
+
+findRoom(_, []) ->
+	{error, "No room of that name"};
+findRoom(Room, [Cur|Rest) ->
+	case Cur of
+		{Room, Userlist} ->
+			{ok, Userlist};
+		_ ->
+			findRoom(Room, Rest)
+	end.
+
+messageRoom(State, P, Uname, Room, Txt) ->
+	case findRoom(Room, State) of
+		{ok, Users} ->
+			%Room found, check that user is in room and start messaging users
+			ok;
+		{error, Reason} ->
+			%No room of that name, spit error back to sender
+			ok
+	end.
+
 roomstate(State) ->
 	receive
-		{join, P, Room} ->
+		[Uname, {join, P, Room}] ->
 			io:format("Trying ~w join ~s~n", [P, Room]),
-			%check with state about being logged in before allowing to join room
 			case joinRoom(State, P, Room) of
 				{ok, NewState} ->
 					P ! {addroom, Room},
@@ -298,7 +339,7 @@ roomstate(State) ->
 					sendOk(P),
 					roomstate(NewState);
 				{create} ->
-					io:format("Trying to create room ~s for user ~w~n",[Room, P]),
+					io:format("Trying to create room ~s for user ~w aka ~s~n",[Room, P, Uname]),
 					io:format("Current State: ~w~n", [State]),
 					TempState = [{Room,[P]} | State],
 					io:format("rst Rooms: ~w~n", [TempState]),
@@ -310,7 +351,7 @@ roomstate(State) ->
 					sendError(P, Reason),
 					roomstate(State)
 			end;
-		{part, P, Room} ->
+		[Uname, {part, P, Room}] ->
 			io:format("Trying ~w part ~s~n", [P, Room]),
 			case partRoom(State, P, Room) of
 				{ok, NewState} ->
@@ -322,9 +363,7 @@ roomstate(State) ->
 					sendError(P, Reason),
 					roomstate(State)
 			end;
-		{message, P, Room, Txt} ->
-			st ! {userlookup, messageroom, P, Room, Txt},
-			roomstate(State);
-		{message, P, Room, Txt, UserN, Userstate} ->
-			ok
+		[Uname, {message, P, Room, Txt}] ->
+			spawn(ramen, messageRoom, [State, P, Uname, Room, Txt]),
+			roomstate(State)
 	end.
