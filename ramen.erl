@@ -1,9 +1,9 @@
 % TODO
+% !!! Don't add non-logged users to userstate? This could fix things nicely
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
 % Add chatrooms, make sure user only gets and sends messages from rooms they are in.
 % Add Check for blank messages
 % Make sure users can't join rooms when not logged in
-% Remove rooms with no users
 % Handle removing timed out users from rooms
 % remove empty array from userstate where rooms were going to be held
 
@@ -34,8 +34,7 @@ accept(LSocket) ->
 
 addCon(Socket) ->
 	PID = spawn(ramen, sendloop, [Socket, []]),
-	spawn(fun() -> recvloop(Socket, PID) end),
-	st ! {add, PID}.
+	spawn(fun() -> recvloop(Socket, PID) end).
 
 % Need to add something here to check frequency of posts and kill user if over limit
 recvloop(Socket, P) ->
@@ -45,6 +44,7 @@ recvloop(Socket, P) ->
 			io:format("Message from ~w: ~s~n", [P, Data]),
 			recvloop(Socket, P);
 		{error, closed} ->
+			% Add logic to remove user and user's joined rooms
 			ok
 	end.
 
@@ -76,6 +76,7 @@ sendloop(Socket, Rooms) ->
 					sendloop(Socket, Rooms);
 				{error, _} ->
 					io:format("Closed ~w~n", [self()]),
+					% Here's where we need to add stuff that culls unreachable users from userstate and roomstate
 					st ! {remove, self()},
 					ok
 			end;
@@ -102,8 +103,7 @@ sendUserMsg({State, FromP, ToN, Msg}) ->
 				{ok, ToP} ->
 					case getUserName(FromP, State) of
 						{ok, FromN} ->
-							FullMsg = ["GOTUSERMSG ",FromN," ",Msg],
-							ToP ! {send, FullMsg},
+							ToP ! {send, ["GOTUSERMSG ",FromN," ",Msg]},
 							sendOk(FromP);
 						{error, Reason} ->
 							sendError(FromP, Reason)
@@ -115,40 +115,33 @@ sendUserMsg({State, FromP, ToN, Msg}) ->
 			sendError(FromP, "Not logged in")
 	end.
 
+% This is currently useless
 cull(P, State) ->
 	% fix to work with logged in users and to remove rooms from rst
-	R = {P,[],[]},
+	R = {P,[]},
 	lists:delete(R, State).
 
 checkUnameAvail(User, []) ->
 	true;
 checkUnameAvail(User, [Cur|Rest]) ->
 	case Cur of
-		{_,User,_} ->
+		{_,User} ->
 			false;
-		{_,_,_} ->
+		{_,_} ->
 			checkUnameAvail(User,Rest)
 	end.
 
 checkIfLoggedIn(P, []) ->
-	true;
+	false;
 checkIfLoggedIn(P, [Cur|Rest]) ->
 	case Cur of
-		{P, [], []} ->
-			false;
-		{P, A, _} ->
+		{P, _} ->
 			true;
-		{_, _, _} ->
+		{_, _} ->
 			checkIfLoggedIn(P, Rest)
 	end.
 
 loginUser(P, User, State) ->
-	R = {P,[],[]},
-	TempState = lists:delete(R, State),
-	lists:append([{P,User,[]}], TempState).
-	
-%swap names with loginUser, for consistancy
-addUser(P, User, State) ->
 	case checkUnameAvail(User, State) of
 		false ->
 			{error, "Username in use"};
@@ -157,8 +150,7 @@ addUser(P, User, State) ->
 				true ->
 					{error, "Already logged in"};
 				false ->
-					NewState = loginUser(P, User, State),
-					{ok, NewState}
+					{ok, lists:append(State, [{P, User}])}
 			end
 	end.
 
@@ -166,16 +158,13 @@ logoutUser(P, State) ->
 	logoutUser(P, State, []).
 
 logoutUser(P, [], Remains) ->
-	ok;
+	{error, "Not logged in"};
 logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
-		{P, [], _} ->
-			{error, "Not logged in"};
-		{P, U, Rooms} ->
+		{P, U} ->
 			% Send rooms and Pid to rst, to remove user from room
-			TempState = lists:append(Rest, NewState),
-			{ok, lists:append(TempState, [{P,[],[]}])};
-		{_,_,_} ->
+			{ok, lists:append(Rest, NewState)};
+		{_,_} ->
 			logoutUser(P, Rest, lists:append(NewState, [Cur]))
 	end.
 
@@ -183,9 +172,9 @@ getUserPid(_, []) ->
 	{error, "User not logged in"};
 getUserPid(Uname, [Cur|Rest]) ->
 	case Cur of
-		{P, Uname, _} ->
+		{P, Uname} ->
 			{ok, P};
-		{_,_,_} ->
+		{_,_} ->
 			getUserPid(Uname, Rest)
 	end.
 
@@ -193,24 +182,26 @@ getUserName(_, []) ->
 	{error, "User not logged in"};
 getUserName(P, [Cur|Rest]) ->
 	case Cur of
-		{P, Uname, _} ->
+		{P, Uname} ->
 			{ok, Uname};
-		{_,_,_} ->
+		{_,_} ->
 			getUserName(P, Rest)
 	end.
 
 userstate(State) ->
 	receive
+		%This line will be useless soon
 		{add, P} ->
-			NewState = [{P, [], []} | State],
+			NewState = [{P, []} | State],
 			%io:format("State: ~w~n", [NewState]),
 			userstate(NewState);
+		%This line will be useless soon
 		{remove, P} ->
 			NewState = cull(P, State),
 			%io:format("Culled: ~w~n", [P]),
 			userstate(NewState);
 		{login, P, User} ->
-			case addUser(P, User, State) of
+			case loginUser(P, User, State) of
 				{ok, NewState} ->
 					sendOk(P),
 					userstate(NewState);
@@ -332,5 +323,10 @@ roomstate(State) ->
 				{error, Reason} ->
 					sendError(P, Reason),
 					roomstate(State)
-			end
+			end;
+		{message, P, Room, Txt} ->
+			st ! {userlookup, messageroom, P, Room, Txt},
+			roomstate(State);
+		{message, P, Room, Txt, UserN, Userstate} ->
+			ok
 	end.
