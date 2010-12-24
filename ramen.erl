@@ -1,7 +1,6 @@
 % TODO
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
 % Add Check for blank messages
-% sendloop need to shutdown recvloop?
 
 -module(ramen).
 -author('Caz').
@@ -25,6 +24,7 @@ listen(Port) ->
 	register(serv, spawn(ramen, accept, [LSocket])).
 
 accept(LSocket) ->
+	%Add timeout here?
 	case gen_tcp:accept(LSocket) of
 		{ok, Socket} ->
 			addCon(Socket),
@@ -39,6 +39,7 @@ addCon(Socket) ->
 
 % Need to add something here to check frequency of posts and kill user if over limit
 recvloop(Socket, P) ->
+	% timeout here too?
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} ->
 			spawn(ramen, reqProcessor, [P, Data]),
@@ -47,7 +48,6 @@ recvloop(Socket, P) ->
 		{error, closed} ->
 			% Add logic to remove user and user's joined rooms
 			P ! logout,
-			st ! {logout, P},
 			io:format("Recv Closed ~w~n", [P]),
 			ok
 	end.
@@ -75,17 +75,15 @@ reqProcessor(P, M) ->
 sendloop(Socket, Rooms) ->
 	receive
 		{send, M} ->
+			% Timeout?
 			case gen_tcp:send(Socket, M) of
 				ok ->
 					io:format("Sent ~w to ~w~n", [ok, self()]),
 					sendloop(Socket, Rooms);
 				{error, _} ->
 					io:format("Send Closed ~w~n", [self()]),
-					% Here's where we need to add stuff that culls unreachable users from userstate and roomstate
 					rooms ! {remove, self(), Rooms},
 					st ! {logout, self()},
-					%this needs rewriting
-					%st ! {remove, self()},
 					ok
 			end;
 		{addroom, Room} ->
@@ -98,7 +96,7 @@ sendloop(Socket, Rooms) ->
 			sendloop(Socket, NewRooms);
 		logout ->
 			rooms ! {remove, self(), Rooms},
-
+			st ! {logout, P},
 			sendloop(Socket, [])
 	end.
 
