@@ -307,18 +307,21 @@ findRoom(Room, [Cur|Rest]) ->
 			findRoom(Room, Rest)
 	end.
 
-broadcastMessage([], _, _) ->
+broadcastMessage([], P, _) ->
 	% message sent
+	sendOk(P),
 	ok;
 broadcastMessage([Cur|Rest], P, Msg) ->
-	case Cur of
-		P ->
-			sendOk(P),
-			broadcastMessage(Rest, P, Msg);
-		_ ->
-			Cur ! {send, Msg},
-			broadcastMessage(Rest, P, Msg)
-	end.
+	Cur ! {send, Msg},
+	broadcastMessage(Rest, P, Msg).
+	% uncomment below to not send room messages back to sender.
+	%case Cur of
+		%P ->
+			%broadcastMessage(Rest, P, Msg);
+		%_ ->
+			%Cur ! {send, Msg},
+			%broadcastMessage(Rest, P, Msg)
+	%end.
 
 broadcastMessage(ToList, FromRoom, FromP, FromName, Txt) ->
 	broadcastMessage(ToList, FromP, ["GOTROOMMSG ", FromName, " ", FromRoom, " ", Txt]).
