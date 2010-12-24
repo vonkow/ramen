@@ -1,6 +1,7 @@
 % TODO
 % Prevent user from sending messages too quickly, add timestamp to userPID in state, check timestamp during post. Add timeout and char length check to received msgs. Add username and timestamp to posts.
 % Add Check for blank messages
+% need to fix error not logged in showing up on logout due to multi logout attempts
 
 -module(ramen).
 -author('Caz').
