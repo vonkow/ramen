@@ -167,7 +167,7 @@ logoutUser(P, State) ->
 	logoutUser(P, State, []).
 
 logoutUser(P, [], Remains) ->
-	{error, "You are not logged in"};
+	error;
 logoutUser(P, [Cur|Rest], NewState) ->
 	case Cur of
 		{P, U} ->
@@ -218,13 +218,14 @@ userstate(State) ->
 					userstate(State)
 			end;
 		%blocks
+		% Add Reason to logout, to prevent not logged in errors on logout
 		{logout, P} ->
 			case logoutUser(P, State) of
 				{ok, NewState} ->
 					sendOk(P),
 					userstate(NewState);
-				{error, Reason} ->
-					sendError(P, Reason),
+				error ->
+					sendError(P, "You are not logged in"),
 					userstate(State)
 			end;
 		%non-blocking
