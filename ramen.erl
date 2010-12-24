@@ -41,9 +41,12 @@ addCon(Socket) ->
 recvloop(Socket, P) ->
 	% timeout here too?
 	case gen_tcp:recv(Socket, 0) of
-		{ok, Data} ->
+		{ok, Data} when length(Data) < 512 ->
 			spawn(ramen, reqProcessor, [P, Data]),
 			io:format("Message from ~w: ~s~n", [P, Data]),
+			recvloop(Socket, P);
+		{ok, _} ->
+			sendError(P, "Message too long, keep it under 512 chars"),
 			recvloop(Socket, P);
 		{error, closed} ->
 			% Add logic to remove user and user's joined rooms
@@ -96,7 +99,7 @@ sendloop(Socket, Rooms) ->
 			sendloop(Socket, NewRooms);
 		logout ->
 			rooms ! {remove, self(), Rooms},
-			st ! {logout, P},
+			st ! {logout, self()},
 			sendloop(Socket, [])
 	end.
 
