@@ -6,23 +6,41 @@
 -module(ramen).
 -author('Caz').
 
--export([start/1, stop/0, accept/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, userLookup/3, callUserLookup/2, messageRoom/5]).
+-export([start/1, stop/0, listen/3, accept/1, userstate/1, roomstate/1, sendloop/2, reqProcessor/2, sendUserMsg/1, userLookup/3, callUserLookup/2, messageRoom/5]).
 
 -define(TCP_OPTIONS, [list, {packet, 0}, {active, false}, {reuseaddr, true}]).
 
 start(Port) ->
-	register(st, spawn(ramen, userstate, [[]])),
-	register(rooms, spawn(ramen, roomstate, [[]])),
-	listen(Port).
+	U = spawn(ramen, userstate, [[]]),
+	R = spawn(ramen, roomstate, [[]]),
+	io:format("trying",[]),
+	register(st, U),
+	io:format("good",[]),
+	register(rooms, R),
+
+	register(lis, spawn(ramen, listen, [Port, U, R])).
 
 stop() ->
-	exit(serv, kill),
-	exit(st, kill),
-	exit(rooms, kill).
+	io:format("Getting quit params~n",[]),
+	lis ! {quit, self()},
+	receive
+		{S, U, R} ->
+			io:format("got params S ~w U ~w R ~w~n",[S, U, R]),
+			exit(S, kill),
+			exit(U, kill),
+			exit(R, kill)
+	end.
 
-listen(Port) ->
+listen(Port, U, R) ->
 	{ok, LSocket} = gen_tcp:listen(Port, ?TCP_OPTIONS),
-	register(serv, spawn(ramen, accept, [LSocket])).
+	io:format("Spawning listener~n", []),
+	S = spawn(ramen, accept, [LSocket]),
+	register(serv, S),
+	receive
+		{quit, P} ->
+			io:format("Got quit",[]),
+			P ! {S, U, R}
+	end.
 
 accept(LSocket) ->
 	%Add timeout here?
