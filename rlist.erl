@@ -47,7 +47,12 @@ roomState(State) ->
 		{add, P} ->
 			roomState([P | State]);
 		{delete, P} ->
-			roomState(lists:delete(P, State));
+			case lists:delete(P, State) of
+				[] ->
+					roomlist ! {remove, self()};
+				NewState ->
+					roomState(NewState)
+			end;
 		{send, Msg} ->
 			spawn(rlist, roomSend, [Msg, State]),
 			roomState(State)
