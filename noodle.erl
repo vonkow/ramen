@@ -15,6 +15,7 @@ recvLoop(S, P) ->
 			P ! seppuku
 	end.
 
+%re-write sanity to send correct msg, minus ok to userState
 requester(P, Data) ->
 	case sanity:checkInput(Data) of
 		{ok, login, Uname} ->
@@ -98,6 +99,9 @@ userState({S, Rx}, Uname, Rooms) ->
 		{send, Msg} ->
 			spawn(noodle, sender, [S, self(), Msg]),
 			userState({S, Rx}, Uname, Rooms);
+		{error, Reason} ->
+			%send error, Reason
+			userState({S, Rx}, Uname, Rooms);
 		{login, _} ->
 			%send error, already logged in
 			userState({S, Rx}, Uname, Rooms);
@@ -114,7 +118,6 @@ userState({S, Rx}, Uname, Rooms) ->
 			userlist ! {remove, self()},
 			receive
 				{ok, logout} ->
-					kill(Tx),
 					kill(Rx),
 					ok;
 			end
