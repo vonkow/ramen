@@ -8,12 +8,12 @@ roomList(State) ->
 		{getpid, P, Room} ->
 			case getPid(Room, State) of
 				{ok, Pid} ->
-					P ! {roompid, Room, ok, Pid},
+					P ! {ok, Pid},
 					roomList(State);
 				{error, add} ->
 					NewPid = spawn(rlist, roomState, []),
-					P ! {roompid, Room, ok, NewPid},
-					roomList([{NewPid, Room} | State])
+					P ! {ok, NewPid},
+					roomList([{Room, NewPid} | State])
 			end;
 		{remove, P} ->
 			roomList(removeRoom(P, State))
@@ -23,7 +23,7 @@ getPid(_, []) ->
 	{error, add};
 getPid(Room, [Cur | Rest]) ->
 	case Cur of
-		{Pid, Room} ->
+		{Room, Pid} ->
 			{ok, Pid};
 		_ ->
 			getPid(Room, Rest)
@@ -36,7 +36,7 @@ removeRoom(_, [], Acc) ->
 	lists:reverse(Acc);
 removeRoom(P, [Cur | Rest], Acc) ->
 	case Cur of
-		{P, _} ->
+		{_, P} ->
 			lists:append(lists:reverse(Acc), Rest);
 		_ ->
 			removeRoom(P, Rest, [Cur | Acc])

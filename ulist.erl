@@ -8,19 +8,19 @@ userList(State)->
 		{add, P, Name} ->
 			case addUser(P, Name, State) of
 				{ok, NewState} ->
-					P ! {login, ok},
+					P ! {ok, login},
 					userList(NewState);
 				{error, Reason} ->
-					P ! {login, error, Reason},
+					P ! {error, Reason},
 					userList(State)
 			end;
 		{remove, P} ->
 			case removeUser(P, State) of
 				{ok, NewState} ->
-					P! {logout, ok},
+					P ! {ok, logout},
 					userList(NewState);
 				{error, Reason} ->
-					P ! {logout, error, Reason},
+					P ! {error, Reason},
 					userList(State)
 			end;
 		{getpid, P, Name} ->
@@ -55,11 +55,11 @@ removeUser(P, [Cur | Rest], Acc) ->
 	end.
 
 getPid(Callback, Name, []) ->
-	Callback ! {getpid, Name, error, "USER NOT LOGGED IN"};
+	Callback ! {error, "USER NOT LOGGED IN"};
 getPid(Callback, Name, [Cur | Rest]) ->
 	case Cur of
 		{P, Name} ->
-			Callback ! {getpid, Name, ok, P};
+			Callback ! {ok, P};
 		_ ->
 			getPid(Callback, Name, Rest)
 	end.
