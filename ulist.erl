@@ -5,7 +5,7 @@
 
 userList(State)->
 	receive
-		{add, P, Name} ->
+		{adduser, P, Name} ->
 			case addUser(P, Name, State) of
 				{ok, NewState} ->
 					P ! {ok, login},
@@ -23,8 +23,8 @@ userList(State)->
 					P ! {error, Reason},
 					userList(State)
 			end;
-		{getpid, P, Name} ->
-			spawn(ulist, getPid, [P, Name, State]),
+		{getpid, Callback, Name} ->
+			spawn(ulist, getPid, [Callback, Name, State]),
 			userList(State)
 	end.
 
@@ -32,7 +32,7 @@ addUser(P, Name, State) ->
 	addUser(P, Name, State, []).
 
 addUser(P, Name, [], Acc) ->
-	lists:reverse([{P, Name} | Acc]);
+	{ok, lists:reverse([{P, Name} | Acc])};
 addUser(P, Name, [Cur | Rest], Acc) ->
 	case Cur of
 		{_, Name} ->
@@ -54,7 +54,7 @@ removeUser(P, [Cur | Rest], Acc) ->
 			removeUser(P, Rest, [Cur | Acc])
 	end.
 
-getPid(Callback, Name, []) ->
+getPid(Callback, _, []) ->
 	Callback ! {error, "USER NOT LOGGED IN"};
 getPid(Callback, Name, [Cur | Rest]) ->
 	case Cur of

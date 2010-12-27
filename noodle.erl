@@ -27,17 +27,18 @@ requester(P, Data) ->
 		{ok, part, Room} ->
 			P ! {part, Room};
 		{ok, message, room, Room, Msg} ->
-			P ! {message, room, Room, Msg};
+			P ! {msg, room, Room, Msg};
 		{ok, message, user, User, Msg} ->
-			P ! {message, user, User, Msg};
+			P ! {msg, user, User, Msg};
 		{error, Reason} ->
 			P ! {send, ["ERROR ",Reason]}
 	end.
 
+
 userState({S, Rx}) ->
 	receive
 		{login, Uname} ->
-			userlist ! {add, self(), Uname,
+			userlist ! {adduser, self(), Uname},
 			receive
 				{ok, login} ->
 					% send ok
@@ -48,6 +49,11 @@ userState({S, Rx}) ->
 			end;
 		_ ->
 			%send, error, not logged in
+			userState({S, Rx})
+	end;
+userState(S) ->
+	receive
+		{rx, Rx} ->
 			userState({S, Rx})
 	end.
 
@@ -69,33 +75,35 @@ userState({S, Rx}, Uname, Rooms) ->
 					end
 			end;
 		{part, Room} ->
-			case removeRoom(P, Room, Rooms) of
+			case removeRoom(self(), Room, Rooms) of
 				{ok, NewRooms} ->
 					%send ok
-					userState({S, Rx}, Uname, NewRooms});
+					userState({{S, Rx}, Uname, NewRooms});
 				{error, Reason} ->
 					%send error, not in room
 					userState({S, Rx}, Uname, Rooms)
 			end;
 		{msg, room, Room, Msg} ->
 			case getRoomPid(Room, Rooms) of
-				{ok, rPid} ->
-					rPid ! {send, ["GOTROOMMSG ", Uname, " ", Room, " ", Msg]};
+				{ok, RPid} ->
+					RPid ! {send, ["GOTROOMMSG ", Uname, " ", Room, " ", Msg]};
 					%send ok
 				{error, Reason} ->
+					ok
 					%send error, not in room
 			end,
 			userState({S, Rx}, Uname, Rooms);
 		{msg, user, User, Msg} ->
 			userlist ! {getpid, self(), User},
 			receive
-				{ok, uPid} ->
-					uPid ! {send, ["GOTUSERMSG ", Uname, " ", Msg]};
+				{ok, UPid} ->
+					UPid ! {send, ["GOTUSERMSG ", Uname, " ", Msg]},
+					userState({S, Rx}, Uname, Rooms);
 					%send ok
 				{error, Reason} ->
 					%send error, user not logged in
-			end,
-			userState({S, Rx}, Uname, Rooms);
+					userState({S, Rx}, Uname, Rooms)
+			end;
 		{send, Msg} ->
 			spawn(noodle, sender, [S, self(), Msg]),
 			userState({S, Rx}, Uname, Rooms);
@@ -118,8 +126,8 @@ userState({S, Rx}, Uname, Rooms) ->
 			userlist ! {remove, self()},
 			receive
 				{ok, logout} ->
-					kill(Rx),
-					ok;
+					exit(Rx, kill),
+					ok
 			end
 	end.
 
@@ -137,7 +145,7 @@ removeRoom(P, Room, [Cur | Rest], Acc) ->
 			removeRoom(P, Room, Rest, [Cur | Acc])
 	end.
 
-getRoomRid(_, []) ->
+getRoomPid(_, []) ->
 	{error, "Not in room"};
 getRoomPid(Room, [Cur | Rest]) ->
 	case Cur of
