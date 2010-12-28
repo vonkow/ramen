@@ -78,7 +78,7 @@ userState({S, Rx}, Uname, Rooms) ->
 			case removeRoom(self(), Room, Rooms) of
 				{ok, NewRooms} ->
 					%send ok
-					userState({{S, Rx}, Uname, NewRooms});
+					userState({S, Rx}, Uname, NewRooms);
 				{error, Reason} ->
 					%send error, not in room
 					userState({S, Rx}, Uname, Rooms)
@@ -138,8 +138,8 @@ removeRoom(_, _, [], Acc) ->
 	{error, "Not in room"};
 removeRoom(P, Room, [Cur | Rest], Acc) ->
 	case Cur of
-		{Room, rPid} ->
-			rPid ! {delete, P},
+		{Room, RPid} ->
+			RPid ! {delete, P},
 			{ok, lists:append(lists:reverse(Acc), Rest)};
 		_ ->
 			removeRoom(P, Room, Rest, [Cur | Acc])
@@ -149,16 +149,16 @@ getRoomPid(_, []) ->
 	{error, "Not in room"};
 getRoomPid(Room, [Cur | Rest]) ->
 	case Cur of
-		{Room, rPid} ->
-			{ok, rPid};
+		{Room, RPid} ->
+			{ok, RPid};
 		_ ->
 			getRoomPid(Room, Rest)
 	end.
 
 removeFromRooms(_, []) ->
 	ok;
-removeFromRooms(P, [{_, rPid} | Rest]) ->
-	rPid ! {delete, P},
+removeFromRooms(P, [{_, RPid} | Rest]) ->
+	RPid ! {delete, P},
 	removeFromRooms(P, Rest).
 
 sender(S, P, Msg) ->

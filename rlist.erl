@@ -16,7 +16,8 @@ roomList(State) ->
 					roomList([{Room, NewPid} | State])
 			end;
 		{remove, P} ->
-			roomList(removeRoom(P, State))
+			NewList = removeRoom(P, State),
+			roomList(NewList)
 	end.
 
 getPid(_, []) ->
