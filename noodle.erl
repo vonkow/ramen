@@ -10,6 +10,7 @@ recvLoop(S, P) ->
 			recvLoop(S, P);
 		{ok, _} ->
 			%send error, 512+ chars
+			sendError(S, self(), "message over 512 chars"),
 			recvLoop(S, P);
 		{error, _} ->
 			P ! seppuku
@@ -31,7 +32,7 @@ requester(P, Data) ->
 		{ok, message, user, User, Msg} ->
 			P ! {msg, user, User, Msg};
 		{error, Reason} ->
-			P ! {send, ["ERROR ",Reason]}
+			P ! {send, ["ERROR ",Reason, "\r\n"]}
 	end.
 
 
@@ -41,14 +42,17 @@ userState({S, Rx}) ->
 			userlist ! {adduser, self(), Uname},
 			receive
 				{ok, login} ->
-					% send ok
+					sendOk(S, self()),
 					userState({S, Rx}, Uname, []);
 				{error, Reason} ->
-					%send error, uname in use
+					sendError(S, self(), Reason),
 					userState({S, Rx})
 			end;
+		{send, Msg} ->
+			spawn(noodle, sender, [S, self(), Msg]),
+			userState({S, Rx});
 		_ ->
-			%send, error, not logged in
+			sendError(S, self(), "not logged in"),
 			userState({S, Rx})
 	end;
 userState(S) ->
@@ -60,37 +64,36 @@ userState(S) ->
 userState({S, Rx}, Uname, Rooms) ->
 	receive
 		{join, Room} ->
-			HasR = fun({N, P}) -> if N == Room -> true; true -> false end end,
+			HasR = fun({N, _}) -> if N == Room -> true; true -> false end end,
 			case lists:any(HasR, Rooms) of
 				true ->
-					%send error, already in room
+					sendError(S, self(), "already joined room"),
 					userState({S, Rx}, Uname, Rooms);
 				false ->
 					roomlist ! {getpid, self(), Room},
 					receive
 						{ok, Pid} ->
 							Pid ! {add, self()},
-							%send Ok
+							sendOk(S, self()),
 							userState({S, Rx}, Uname, [{Room, Pid} | Rooms])
 					end
 			end;
 		{part, Room} ->
 			case removeRoom(self(), Room, Rooms) of
 				{ok, NewRooms} ->
-					%send ok
+					sendOk(S, self()),
 					userState({S, Rx}, Uname, NewRooms);
 				{error, Reason} ->
-					%send error, not in room
+					sendError(S, self(), Reason),
 					userState({S, Rx}, Uname, Rooms)
 			end;
 		{msg, room, Room, Msg} ->
 			case getRoomPid(Room, Rooms) of
 				{ok, RPid} ->
-					RPid ! {send, ["GOTROOMMSG ", Uname, " ", Room, " ", Msg]};
-					%send ok
+					RPid ! {send, ["GOTROOMMSG ", Uname, " ", Room, " ", Msg]},
+					sendOk(S, self());
 				{error, Reason} ->
-					ok
-					%send error, not in room
+					sendError(S, self(), Reason)
 			end,
 			userState({S, Rx}, Uname, Rooms);
 		{msg, user, User, Msg} ->
@@ -98,27 +101,27 @@ userState({S, Rx}, Uname, Rooms) ->
 			receive
 				{ok, UPid} ->
 					UPid ! {send, ["GOTUSERMSG ", Uname, " ", Msg]},
+					sendOk(S, self()),
 					userState({S, Rx}, Uname, Rooms);
-					%send ok
 				{error, Reason} ->
-					%send error, user not logged in
+					sendError(S, self(), Reason),
 					userState({S, Rx}, Uname, Rooms)
 			end;
 		{send, Msg} ->
 			spawn(noodle, sender, [S, self(), Msg]),
 			userState({S, Rx}, Uname, Rooms);
 		{error, Reason} ->
-			%send error, Reason
+			sendError(S, self(), Reason),
 			userState({S, Rx}, Uname, Rooms);
 		{login, _} ->
-			%send error, already logged in
+			sendError(S, self(), "already logged in"),
 			userState({S, Rx}, Uname, Rooms);
 		logout ->
 			removeFromRooms(self(), Rooms),
 			userlist ! {remove, self()},
 			receive
 				{ok, logout} ->
-					%send ok
+					sendOk(S, self()),
 					userState({S, Rx})
 			end;
 		seppuku ->
@@ -134,7 +137,7 @@ userState({S, Rx}, Uname, Rooms) ->
 removeRoom(P, Room, Rooms) ->
 	removeRoom(P, Room, Rooms, []).
 
-removeRoom(_, _, [], Acc) ->
+removeRoom(_, _, [], _) ->
 	{error, "Not in room"};
 removeRoom(P, Room, [Cur | Rest], Acc) ->
 	case Cur of
@@ -174,52 +177,3 @@ sendOk(S, P) ->
 
 sendError(S, P, Reason) ->
 	spawn(noodle, sender, [S, P, ["ERROR ", Reason, "\r\n"]]).
-
-%Logged userState commands:
-%	{join, Room}
-%		check Rooms for room
-%			false ->
-%				message roomList ! get rPid by Name
-%				add uPid to roomState
-%				add rPid to Rooms
-%				send ok
-%			true ->
-%				send error, already in room
-%		call self
-%	{part, Room}
-%		check Rooms for room
-%			true ->
-%				message roomState ! remove uPid
-%				remove Room from Rooms
-%				send ok
-%			false ->
-%				send error, not in room
-%		call self
-%	{msg, Room, Msg}
-%		check Rooms for room
-%			true ->
-%				message room ! send message
-%				send ok
-%			false ->
-%				error, not in room
-%		call self
-%	{msg, User, Msg}
-%		message userlist ! get toPid
-%			{ok, Pid} ->
-%				message Pid ! send message
-%				send ok
-%			false ->
-%				send error, user not logged in
-%		call self
-%	{send, Msg}
-%		spawn sender to send Msg
-%	logout
-%		message userstate ! remove uPid
-%		message all Rooms ! remove uPid
-%		send ok
-%		call self unlogged 
-%	seppuku
-%		do logout
-%		kill(Recv)
-%		kill(Send)
-%		ok

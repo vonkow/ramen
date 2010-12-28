@@ -36,6 +36,6 @@ accept(LSocket) ->
 			Rx = spawn(noodle, recvLoop, [Socket, Pid]),
 			Pid ! {rx, Rx},
 			accept(LSocket);
-		{error, Reason} ->
+		{error, _} ->
 			accept(LSocket)
 	end.
