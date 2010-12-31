@@ -13,7 +13,9 @@ roomList(State) ->
 				{error, add} ->
 					NewPid = spawn(rlist, roomState, [[]]),
 					P ! {ok, NewPid},
-					roomList([{Room, NewPid} | State])
+					roomList([{Room, NewPid} | State]);
+				_ ->
+					roomList(State)
 			end;
 		{remove, P} ->
 			NewList = removeRoom(P, State),
@@ -56,6 +58,8 @@ roomState(State) ->
 			end;
 		{send, Msg} ->
 			spawn(rlist, roomSend, [Msg, State]),
+			roomState(State);
+		_ ->
 			roomState(State)
 	end.
 

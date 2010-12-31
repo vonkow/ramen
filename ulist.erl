@@ -25,6 +25,8 @@ userList(State)->
 			end;
 		{getpid, Callback, Name} ->
 			spawn(ulist, getPid, [Callback, Name, State]),
+			userList(State);
+		_ ->
 			userList(State)
 	end.
 
