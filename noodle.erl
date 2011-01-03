@@ -13,7 +13,7 @@ recvLoop(S, P, LastT, Strikes) ->
 				{nok, CurT} ->
 					if
 						Strikes < 9 ->
-							sendError(S, self(), "YOU ARE MESSAGING TOO QUICKLY"]),
+							sendError(S, self(), "YOU ARE MESSAGING TOO QUICKLY"),
 							recvLoop(S, P, CurT, Strikes+1);
 						true ->
 							sendError(S, self(), "YOU HAVE BEEN DISCONNECTED FOR REPEAT VIOLATIONS"),

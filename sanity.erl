@@ -65,7 +65,7 @@ parseStart(S) ->
 					checkPart(Data);
 				"MSG" ->
 					checkMsg(Data);
-				E ->
+				_ ->
 					{error, "NOT A PROPER COMMAND"}
 			end;
 		{error, Msg} ->
