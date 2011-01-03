@@ -1,22 +1,52 @@
 -module(noodle).
 -author("Caz").
 
--export([recvLoop/2, requester/2, userState/1, userState/3, sender/3]).
+-export([recvLoop/4, requester/2, userState/1, userState/3, sender/3]).
 
-recvLoop(S, P) ->
+recvLoop(S, P, LastT, Strikes) ->
 	case gen_tcp:recv(S, 0) of
-		{ok, Data} when length(Data) < 512 ->
-			spawn(noodle, requester, [P, Data]),
-			recvLoop(S, P);
+		{ok, Data} when length(Data) < 1000 ->
+			case timeCheck(LastT) of
+				{ok, CurT} ->
+					spawn(noodle, requester, [P, Data]),
+					recvLoop(S, P, CurT, Strikes);
+				{nok, CurT} ->
+					if
+						Strikes < 9 ->
+							sendError(S, self(), "YOU ARE MESSAGING TOO QUICKLY"]),
+							recvLoop(S, P, CurT, Strikes+1);
+						true ->
+							sendError(S, self(), "YOU HAVE BEEN DISCONNECTED FOR REPEAT VIOLATIONS"),
+							P ! seppuku
+					end
+			end;
 		{ok, _} ->
-			%send error, 512+ chars
-			sendError(S, self(), "message over 512 chars"),
-			recvLoop(S, P);
+			if
+				Strikes < 9 ->
+					sendError(S, self(), "MESSAGE IS TOO LONG, KEEP IT UNDER 1000 CHARACTERS"),
+					recvLoop(S, P, LastT, Strikes+1);
+				true ->
+					sendError(S, self(), "YOU HAVE BEEN DISCONNECTED FOR REPEAT VIOLATIONS"),
+					P ! seppuku
+			end;
 		{error, _} ->
 			P ! seppuku
 	end.
 
-%re-write sanity to send correct msg, minus ok to userState
+timeCheck({LastMegSec, LastSec}) ->
+	{CurMegSec, CurSec, _} = erlang:now(),
+	case CurMegSec of
+		LastMegSec ->
+			if 
+				CurSec >= LastSec+1 ->
+					{ok, {CurMegSec, CurSec}};
+				true ->
+					{nok, {CurMegSec, CurSec}}
+			end;
+		_ ->
+			{ok, {CurMegSec, CurSec}}
+	end.
+				
 requester(P, Data) ->
 	case sanity:checkInput(Data) of
 		{ok, login, Uname} ->
@@ -35,7 +65,6 @@ requester(P, Data) ->
 			P ! {send, ["ERROR ",Reason, "\r\n"]}
 	end.
 
-
 userState({S, Rx}) ->
 	receive
 		{login, Uname} ->
@@ -52,13 +81,15 @@ userState({S, Rx}) ->
 			spawn(noodle, sender, [S, self(), Msg]),
 			userState({S, Rx});
 		_ ->
-			sendError(S, self(), "not logged in"),
+			sendError(S, self(), "YOU ARE NOT LOGGED IN"),
 			userState({S, Rx})
 	end;
 userState(S) ->
 	receive
 		{rx, Rx} ->
-			userState({S, Rx})
+			userState({S, Rx});
+		_ ->
+			userState(S)
 	end.
 
 userState({S, Rx}, Uname, Rooms) ->
@@ -67,7 +98,7 @@ userState({S, Rx}, Uname, Rooms) ->
 			HasR = fun({N, _}) -> if N == Room -> true; true -> false end end,
 			case lists:any(HasR, Rooms) of
 				true ->
-					sendError(S, self(), "already joined room"),
+					sendError(S, self(), "YOU HAVE ALREADY JOIND THIS ROOM"),
 					userState({S, Rx}, Uname, Rooms);
 				false ->
 					roomlist ! {getpid, self(), Room},
@@ -114,7 +145,7 @@ userState({S, Rx}, Uname, Rooms) ->
 			sendError(S, self(), Reason),
 			userState({S, Rx}, Uname, Rooms);
 		{login, _} ->
-			sendError(S, self(), "already logged in"),
+			sendError(S, self(), "YOU ARE ALREADY LOGGED IN"),
 			userState({S, Rx}, Uname, Rooms);
 		logout ->
 			removeFromRooms(self(), Rooms),
@@ -130,6 +161,7 @@ userState({S, Rx}, Uname, Rooms) ->
 			receive
 				{ok, logout} ->
 					exit(Rx, kill),
+					gen_tcp:close(S),
 					ok
 			end
 	end.
@@ -138,7 +170,7 @@ removeRoom(P, Room, Rooms) ->
 	removeRoom(P, Room, Rooms, []).
 
 removeRoom(_, _, [], _) ->
-	{error, "Not in room"};
+	{error, "YOU ARE NOT IN THIS ROOM"};
 removeRoom(P, Room, [Cur | Rest], Acc) ->
 	case Cur of
 		{Room, RPid} ->
@@ -149,7 +181,7 @@ removeRoom(P, Room, [Cur | Rest], Acc) ->
 	end.
 
 getRoomPid(_, []) ->
-	{error, "Not in room"};
+	{error, "YOU ARE NOT IN THIS ROOM"};
 getRoomPid(Room, [Cur | Rest]) ->
 	case Cur of
 		{Room, RPid} ->

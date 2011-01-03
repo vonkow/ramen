@@ -29,11 +29,10 @@ listen(Port, U, R) ->
 	end.
 
 accept(LSocket) ->
-	%Add timeout here?
 	case gen_tcp:accept(LSocket) of
 		{ok, Socket} ->
 			Pid = spawn(noodle, userState, [Socket]),
-			Rx = spawn(noodle, recvLoop, [Socket, Pid]),
+			Rx = spawn(noodle, recvLoop, [Socket, Pid, {0, 0}, 0]),
 			Pid ! {rx, Rx},
 			accept(LSocket);
 		{error, _} ->
