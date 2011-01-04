@@ -1,0 +1,7 @@
+make to compile
+make clean to decompile
+erl to start the Erlang shell
+ramen:start(8888) to start the server on port 8888
+ramen:stop() or ctrl+c and then a to stop
+
+Why ramen? It deals with lots of MSG packets.

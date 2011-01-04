@@ -3,6 +3,15 @@
 
 -export([roomList/1, roomState/1, roomSend/2]).
 
+% This module handles all chat room related processes.
+% roomList is the master list of all rooms currently in existance;
+% it is queried when a user attempts to join a room, if the room exists
+% the user is returned the room's process id and the room is given the user's id.
+% If the room does not exist, the roomList creates a new room before doing the above.
+% Each room is given its own roomState process; this tracks all users currently in
+% the room and is used for broadcasting messages. If the last user in a room parts
+% the roomState messages the roomList to remove itsself before terminating.
+
 roomList(State) ->
 	receive
 		{getpid, P, Room} ->

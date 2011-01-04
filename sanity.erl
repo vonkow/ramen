@@ -1,18 +1,13 @@
-% Sanity, checks input and parses meaning.
-
-% Start ->
-%	After proper recv(ie, no timeout),
-%	Check for line end \r\n via CheckEnd,
-%	Check for no additional line breaks,
-%	Check for proper start code:
-%		LOGIN , LOGOUT , MSG , JOIN , PART , (HELP , LIST)
-
-% Notes:
-% \r = 13, \n = 10, ' ' = 32, # = 35
-
 -module(sanity).
 -author('Caz').
+
 -export([checkInput/1]).
+
+% This module verifies and parses user input.
+% Erlang is pretty slow when dealing with strings (they're stored as lists of ints, ugh),
+% therefore this module is somewhat slow compared to say, Perl, but it performs well enough.
+% If the server was set to interpert incoming data as raw bits, this could be re-written
+% to perform faster, but the trade-off in complexity was one I didn't have the time to make.
 
 checkEnd(S) ->
 	case lists:suffix("\r\n", S) of

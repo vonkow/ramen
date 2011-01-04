@@ -3,6 +3,15 @@
 
 -export([userList/1, getPid/3]).
 
+% This module stores a master list of all logged in users and their associated
+% process Ids. It is queried every time a user logs in or out or sends a message
+% to another user, hence it has the potential to be a bottleneck. Due to this fact,
+% I attempted to move as much of the verification and processing to the User State
+% found in the module "noodle". If this chat server was to be used in a production
+% environment, I might consider creating multiple user lists based upon the starting
+% letter of the user's name or something like that. For now however, I think it can 
+% hold up the the abuse it will receive.
+
 userList(State)->
 	receive
 		{adduser, P, Name} ->

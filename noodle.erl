@@ -3,6 +3,16 @@
 
 -export([recvLoop/4, requester/2, userState/1, userState/3, sender/3]).
 
+% This module contains the processes associated with each connected user.
+% When a user connects, a receive loop and a User State process are created
+% and associated with that particular connection.
+% The User State is used to process requests, send the user messages and
+% store the user's name and currently joined chat rooms.
+% The Receive Loop is used to receive messages from the user and send them
+% through the input checker "sanity". The Receive Loop is also responsible
+% for making sure the user is not sending messages that are too long or too
+% frequent. Repeated violations of these stipulations results in being kicked.
+
 recvLoop(S, P, LastT, Strikes) ->
 	case gen_tcp:recv(S, 0) of
 		{ok, Data} when length(Data) < 1000 ->
